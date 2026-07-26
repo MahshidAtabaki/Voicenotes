@@ -65,6 +65,20 @@ function splitChunks(input: string): { text: string; start: number }[] {
   const realParas = paragraphs.filter((p) => p.text.trim().length > 0);
   if (realParas.length > 1) return realParas;
 
+  // Respect explicit spoken transitions even when punctuation is imperfect.
+  const transitionRegex =
+    /\b(?:another thing|second(?:ly)?|separately|on another note|the other thing)\b/gi;
+  const transitions = [...trimmed.matchAll(transitionRegex)]
+    .map((match) => match.index ?? 0)
+    .filter((index) => index > 0);
+  if (transitions.length > 0) {
+    const starts = [0, ...transitions].slice(0, 3);
+    return starts.map((start, index) => ({
+      text: trimmed.slice(start, starts[index + 1] ?? trimmed.length),
+      start,
+    }));
+  }
+
   // Otherwise group sentences; only split when there are several.
   const sentences: { text: string; start: number }[] = [];
   const sentRegex = /[^.!?]+[.!?]+(\s+|$)|[^.!?]+$/g;

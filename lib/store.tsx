@@ -111,6 +111,11 @@ interface State {
   /** Storage path of the uploaded audio for the current capture (voice). */
   pendingAudioPath: string | null;
   isSamplePreview: boolean;
+  playerVisible: boolean;
+  playerPlaying: boolean;
+  playerCurrent: number;
+  playerDuration: number;
+  playerTitle: string;
 }
 
 const initialState: State = {
@@ -143,6 +148,11 @@ const initialState: State = {
   morph: null,
   pendingAudioPath: null,
   isSamplePreview: false,
+  playerVisible: false,
+  playerPlaying: false,
+  playerCurrent: 0,
+  playerDuration: 0,
+  playerTitle: "Recording",
 };
 
 export interface VCStore extends State {
@@ -190,6 +200,10 @@ export interface VCStore extends State {
   cancelReview: () => void;
   openTranscript: () => void;
   playAudio: () => void;
+  togglePlayback: () => void;
+  stopPlayback: () => void;
+  closePlayback: () => void;
+  seekPlayback: (seconds: number) => void;
   retryProcessing: () => void;
   // saved
   captureAnother: () => void;
@@ -267,6 +281,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
 
   const drawLoopRef = useRef<() => void>(() => {});
   const playbackEl = useRef<HTMLAudioElement | null>(null);
+  const playbackObjectUrl = useRef<string | null>(null);
   const waveEl = useRef<HTMLCanvasElement | null>(null);
   const taEl = useRef<HTMLTextAreaElement | null>(null);
   const transEl = useRef<HTMLDivElement | null>(null);
@@ -328,6 +343,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       clearTimers();
       stopSpeaking();
       if (playbackEl.current) playbackEl.current.pause();
+      if (playbackObjectUrl.current) URL.revokeObjectURL(playbackObjectUrl.current);
       if (toastT.current) clearTimeout(toastT.current);
       if (expandT.current) clearTimeout(expandT.current);
     };
@@ -1074,22 +1090,89 @@ export function VCProvider({ children }: { children: ReactNode }) {
     showToast("Full transcript preserved unchanged"),
   );
 
-  const playUrl = useCallbackSafe((url: string) => {
+  const playUrl = useCallbackSafe((url: string, title: string, objectUrl = false) => {
     try {
       if (playbackEl.current) playbackEl.current.pause();
+      if (playbackObjectUrl.current) URL.revokeObjectURL(playbackObjectUrl.current);
+      playbackObjectUrl.current = objectUrl ? url : null;
       const el = new Audio(url);
       playbackEl.current = el;
-      void el.play().catch(() => {});
+      el.preload = "metadata";
+      el.addEventListener("loadedmetadata", () => {
+        patch({
+          playerDuration: Number.isFinite(el.duration) ? el.duration : 0,
+        });
+      });
+      el.addEventListener("timeupdate", () => {
+        patch({
+          playerCurrent: el.currentTime,
+          playerDuration: Number.isFinite(el.duration) ? el.duration : 0,
+        });
+      });
+      el.addEventListener("play", () => patch({ playerPlaying: true }));
+      el.addEventListener("pause", () => patch({ playerPlaying: false }));
+      el.addEventListener("ended", () =>
+        patch({ playerPlaying: false, playerCurrent: el.duration || 0 }),
+      );
+      patch({
+        playerVisible: true,
+        playerPlaying: false,
+        playerCurrent: 0,
+        playerDuration: 0,
+        playerTitle: title,
+      });
+      void el.play().catch(() => {
+        patch({ playerPlaying: false });
+        showToast("Playback could not start");
+      });
     } catch {
-      /* ignore */
+      showToast("Playback could not start");
     }
+  });
+
+  const togglePlayback = useCallbackSafe(() => {
+    const el = playbackEl.current;
+    if (!el) return;
+    if (el.paused) void el.play().catch(() => showToast("Playback could not start"));
+    else el.pause();
+  });
+
+  const stopPlayback = useCallbackSafe(() => {
+    const el = playbackEl.current;
+    if (!el) return;
+    el.pause();
+    el.currentTime = 0;
+    patch({ playerPlaying: false, playerCurrent: 0 });
+  });
+
+  const closePlayback = useCallbackSafe(() => {
+    const el = playbackEl.current;
+    if (el) {
+      el.pause();
+      el.src = "";
+    }
+    playbackEl.current = null;
+    if (playbackObjectUrl.current) URL.revokeObjectURL(playbackObjectUrl.current);
+    playbackObjectUrl.current = null;
+    patch({
+      playerVisible: false,
+      playerPlaying: false,
+      playerCurrent: 0,
+      playerDuration: 0,
+    });
+  });
+
+  const seekPlayback = useCallbackSafe((seconds: number) => {
+    const el = playbackEl.current;
+    if (!el || !Number.isFinite(seconds)) return;
+    el.currentTime = Math.max(0, Math.min(seconds, el.duration || seconds));
+    patch({ playerCurrent: el.currentTime });
   });
 
   const playAudio = useCallbackSafe(async () => {
     // Just-recorded review: play the in-memory recording directly.
     if (stateRef.current.screen === "review" && audioBlob.current) {
-      playUrl(URL.createObjectURL(audioBlob.current));
-      showToast("▶ Playing your recording…");
+      playUrl(URL.createObjectURL(audioBlob.current), "New recording", true);
       return;
     }
     // Saved capture: fetch a signed URL for the stored audio.
@@ -1098,8 +1181,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (id && capture?.audioPath?.startsWith("local:")) {
       const blob = await getLocalAudio(id).catch(() => null);
       if (blob) {
-        playUrl(URL.createObjectURL(blob));
-        showToast("▶ Playing your recording…");
+        playUrl(URL.createObjectURL(blob), capture.title, true);
         return;
       }
       showToast("Recording is unavailable on this device");
@@ -1108,8 +1190,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (supabaseEnabled && id) {
       const url = await getAudioUrl(id);
       if (url) {
-        playUrl(url);
-        showToast("▶ Playing your recording…");
+        playUrl(url, capture?.title ?? "Recording");
         return;
       }
     }
@@ -1293,6 +1374,10 @@ export function VCProvider({ children }: { children: ReactNode }) {
     cancelReview,
     openTranscript,
     playAudio,
+    togglePlayback,
+    stopPlayback,
+    closePlayback,
+    seekPlayback,
     retryProcessing,
     captureAnother,
     viewSaved,

@@ -4,6 +4,7 @@ import { useVC } from "@/lib/store";
 import { BottomNav } from "./BottomNav";
 import { PhoneFrame } from "./PhoneFrame";
 import { MorphOverlay, Toast } from "./Toast";
+import { MiniPlayer } from "./MiniPlayer";
 import { Capture } from "./screens/Capture";
 import { Detail } from "./screens/Detail";
 import { Home } from "./screens/Home";
@@ -35,6 +36,7 @@ export function AppShell() {
 
       <MorphOverlay />
       <Toast />
+      <MiniPlayer raised={showNav} />
       {showNav && <BottomNav />}
     </PhoneFrame>
   );
