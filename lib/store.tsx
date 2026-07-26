@@ -31,6 +31,7 @@ import { speak, stopSpeaking } from "./tts";
 import { demoTranscriptWords, seedReviewItems } from "./seed";
 import { seedCaptures } from "./seed";
 import { readPreviewCaptures, writePreviewCaptures } from "./local-preview";
+import { deleteLocalAudio, getLocalAudio, saveLocalAudio } from "./local-audio";
 import type {
   AppStatus,
   CaptureKind,
@@ -922,9 +923,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         it.id === id
           ? {
               ...it,
-              emotions: it.emotions.map((em) =>
-                em.label === tag ? { ...em, confirmed: !em.confirmed } : em,
-              ),
+              emotions: it.emotions.filter((em) => em.label !== tag),
             }
           : it,
       ),
@@ -982,6 +981,17 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (supabaseEnabled && st.captureKind === "voice" && !audioPath) {
       try { if (!audioBlob.current) throw new Error("missing_audio"); audioPath = await uploadAudio(audioBlob.current); }
       catch { patch({ status: "reviewing" }); showToast("Audio upload failed — try saving again"); return; }
+    }
+    if (!supabaseEnabled && st.captureKind === "voice") {
+      try {
+        if (!audioBlob.current) throw new Error("missing_audio");
+        await saveLocalAudio(localId, audioBlob.current);
+        audioPath = `local:${localId}`;
+      } catch {
+        patch({ status: "reviewing" });
+        showToast("Recording storage failed. Try saving again.");
+        return;
+      }
     }
     const localSession: CaptureSession = {
       id: localId,
@@ -1084,6 +1094,17 @@ export function VCProvider({ children }: { children: ReactNode }) {
     }
     // Saved capture: fetch a signed URL for the stored audio.
     const id = stateRef.current.detailId;
+    const capture = stateRef.current.captures.find((item) => item.id === id);
+    if (id && capture?.audioPath?.startsWith("local:")) {
+      const blob = await getLocalAudio(id).catch(() => null);
+      if (blob) {
+        playUrl(URL.createObjectURL(blob));
+        showToast("▶ Playing your recording…");
+        return;
+      }
+      showToast("Recording is unavailable on this device");
+      return;
+    }
     if (supabaseEnabled && id) {
       const url = await getAudioUrl(id);
       if (url) {
@@ -1152,7 +1173,12 @@ export function VCProvider({ children }: { children: ReactNode }) {
   const deleteCapture = useCallbackSafe(async () => {
     const id = stateRef.current.detailId;
     if (!id) return;
-    try { if (supabaseEnabled) await apiDeleteCapture(id); patch((prev) => ({ screen: "library", captures: prev.captures.filter((c) => c.id !== id) })); showToast("Capture deleted"); }
+    try {
+      if (supabaseEnabled) await apiDeleteCapture(id);
+      else await deleteLocalAudio(id).catch(() => {});
+      patch((prev) => ({ screen: "library", captures: prev.captures.filter((c) => c.id !== id) }));
+      showToast("Capture deleted");
+    }
     catch { showToast("Delete failed — nothing was removed"); }
   });
   const archiveCapture = useCallbackSafe(async () => {
