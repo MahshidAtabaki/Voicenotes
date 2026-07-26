@@ -23,10 +23,11 @@ import {
   supabaseEnabled,
   transcribeAudio,
   uploadAudio,
+  removeAudio,
 } from "./data";
 import { topicsToReviewItems } from "./organize";
 import { speak, stopSpeaking } from "./tts";
-import { demoTranscriptWords, seedCaptures, seedReviewItems } from "./seed";
+import { demoTranscriptWords, seedReviewItems } from "./seed";
 import type {
   AppStatus,
   CaptureKind,
@@ -174,6 +175,7 @@ export interface VCStore extends State {
   deleteCapture: () => void;
   archiveCapture: () => void;
   toggleItemShare: (id: string) => void;
+  updateSavedField: (field: "title" | "summary", value: string) => void;
   // settings
   toggleMute: () => void;
   goTherapist: () => void;
@@ -290,6 +292,16 @@ export function VCProvider({ children }: { children: ReactNode }) {
     };
   }, [teardownMic, clearTimers]);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("voicenotes.previewCaptures");
+      if (!supabaseEnabled && saved) patch({ captures: JSON.parse(saved) as CaptureSession[] });
+    } catch { /* invalid browser storage is ignored */ }
+  }, [patch]);
+  useEffect(() => {
+    if (!supabaseEnabled) localStorage.setItem("voicenotes.previewCaptures", JSON.stringify(s.captures));
+  }, [s.captures]);
+
   // Restore an existing Supabase session on load so a signed-in user lands home.
   useEffect(() => {
     if (!supabaseEnabled) return;
@@ -381,7 +393,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     drawLoopRef.current = drawLoop;
   }, [drawLoop]);
 
-  // ---------- mock live transcript (replaced by real STT post-recording) ----------
+  // Sample-preview transcript. Never called for microphone recordings.
   const startTranscript = useCallbackSafe(() => {
     const words = demoTranscriptWords();
     tIdx.current = 0;
@@ -452,7 +464,6 @@ export function VCProvider({ children }: { children: ReactNode }) {
       });
       beginTick();
       drawLoop();
-      startTranscript();
     } catch (err) {
       let title = "Microphone blocked";
       let body =
@@ -497,13 +508,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
   });
 
   const allowMic = useCallbackSafe(async () => {
-    try {
-      const test = await navigator.mediaDevices.getUserMedia({ audio: true });
-      test.getTracks().forEach((t) => t.stop());
-      startMic();
-    } catch {
-      startDemo();
-    }
+    await startMic();
   });
 
   const enterCapture = useCallbackSafe(() => {
@@ -523,7 +528,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (expandT.current) clearTimeout(expandT.current);
     setTimeout(() => patch({ expanding: false, morph: null }), 90);
     // Short spoken prompt (cached, silent when muted or unavailable).
-    void speak("What would you like to record?", stateRef.current.muted);
+    void speak("capture", stateRef.current.muted);
   });
 
   const goCapture = useCallbackSafe((e?: { currentTarget: HTMLElement }) => {
@@ -549,6 +554,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
   });
 
   const cancelCapture = useCallbackSafe(() => {
+    const path = stateRef.current.pendingAudioPath;
+    if (path) void removeAudio(path).catch(() => patch({ toast: "Could not remove uploaded audio; please retry" }));
     stopSpeaking();
     teardownMic();
     clearTimers();
@@ -636,34 +643,25 @@ export function VCProvider({ children }: { children: ReactNode }) {
 
   const doneRecording = useCallbackSafe(async () => {
     stopSpeaking();
-    const mockTranscript = stateRef.current.liveTranscript.trim();
+    if (fakeAudio.current) {
+      teardownMic(); clearTimers();
+      patch({ items: seedReviewItems(), screen: "review", status: "reviewing", captureKind: "voice" });
+      return;
+    }
     // Preserve audio until upload/transcription — assemble the blob first.
     const blob = await finalizeAudio();
     teardownMic();
     clearTimers();
-    patch({ captureKind: "voice", status: "uploading", procStep: 0 });
-
-    // Persist audio to private storage (best-effort).
-    let audioPath: string | null = null;
-    if (supabaseEnabled && blob) {
-      try {
-        audioPath = await uploadAudio(blob);
-      } catch {
-        /* keep going — audio stays in memory for this session */
-      }
+    if (!blob?.size) {
+      patch({ status: "failed", micError: { title: "Recording failed", body: "No audio was captured. Your recording has not been replaced with sample content. Please try again." } });
+      return;
     }
-    patch({ pendingAudioPath: audioPath, status: "transcribing", procStep: 1 });
+    patch({ captureKind: "voice", status: "transcribing", procStep: 1 });
 
     // Real transcription (ElevenLabs Scribe). Preserve the transcript unchanged.
-    let transcript = mockTranscript;
-    if (blob) {
-      try {
-        const t = await transcribeAudio(blob);
-        if (t && t.trim()) transcript = t;
-      } catch {
-        /* fall back to whatever we already have */
-      }
-    }
+    let transcript: string;
+    try { transcript = await transcribeAudio(blob) as string; }
+    catch { patch({ status: "failed", micError: null, procStep: -1 }); return; }
     patch({ liveTranscript: transcript });
 
     runPipeline("voice", transcript, 2);
@@ -673,7 +671,10 @@ export function VCProvider({ children }: { children: ReactNode }) {
     const st = stateRef.current;
     const input =
       st.captureKind === "text" ? st.textDraft.trim() : st.liveTranscript.trim();
-    runPipeline(st.captureKind, input, st.captureKind === "voice" ? 2 : 0);
+    if (st.captureKind === "voice" && !input && audioBlob.current) {
+      patch({ status: "transcribing", procStep: 1 });
+      void transcribeAudio(audioBlob.current).then((text) => { patch({ liveTranscript: text ?? "" }); runPipeline("voice", text ?? "", 2); }).catch(() => patch({ status: "failed", micError: null }));
+    } else runPipeline(st.captureKind, input, st.captureKind === "voice" ? 2 : 0);
   });
 
   // ---------- text ----------
@@ -864,6 +865,12 @@ export function VCProvider({ children }: { children: ReactNode }) {
     const transcript = st.captureKind === "voice" ? st.liveTranscript.trim() : null;
     const durationSeconds = st.captureKind === "voice" ? st.elapsed : null;
 
+    patch({ status: "saving" });
+    let audioPath = st.pendingAudioPath;
+    if (supabaseEnabled && st.captureKind === "voice" && !audioPath) {
+      try { if (!audioBlob.current) throw new Error("missing_audio"); audioPath = await uploadAudio(audioBlob.current); }
+      catch { patch({ status: "reviewing" }); showToast("Audio upload failed — try saving again"); return; }
+    }
     const localSession: CaptureSession = {
       id: localId,
       kind: st.captureKind,
@@ -871,7 +878,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       summary,
       originalText,
       transcript,
-      audioPath: st.pendingAudioPath,
+      audioPath,
       durationSeconds,
       shared: st.reviewShare,
       archived: false,
@@ -891,13 +898,6 @@ export function VCProvider({ children }: { children: ReactNode }) {
         shared: st.reviewShare,
       })),
     };
-    patch((prev) => ({
-      screen: "saved",
-      status: "saved",
-      captures: [localSession, ...prev.captures],
-      detailId: localId,
-    }));
-
     if (supabaseEnabled) {
       const input: CreateCaptureInput = {
         kind: st.captureKind,
@@ -905,7 +905,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         summary,
         originalText,
         transcript,
-        audioPath: st.pendingAudioPath,
+        audioPath,
         durationSeconds,
         shared: st.reviewShare,
         items: items.map((it) => ({
@@ -924,19 +924,18 @@ export function VCProvider({ children }: { children: ReactNode }) {
       try {
         const created = await apiCreateCapture(input);
         if (created) {
-          patch((prev) => ({
-            captures: prev.captures.map((c) => (c.id === localId ? created : c)),
-            detailId: prev.detailId === localId ? created.id : prev.detailId,
-            pendingAudioPath: null,
-          }));
+          patch((prev) => ({ captures: [created, ...prev.captures], detailId: created.id, pendingAudioPath: null, screen: "saved", status: "saved" }));
         }
       } catch {
-        /* keep the local copy so the user never loses their save */
+        patch({ status: "reviewing", pendingAudioPath: audioPath }); showToast("Save failed — your recording is ready to retry"); return;
       }
-    }
+    } else patch((prev) => ({ screen: "saved", status: "saved", captures: [localSession, ...prev.captures], detailId: localId }));
   });
 
   const cancelReview = useCallbackSafe(() => {
+    const path = stateRef.current.pendingAudioPath;
+    if (path) void removeAudio(path).catch(() => showToast("Could not remove uploaded audio; please retry"));
+    audioBlob.current = null;
     showToast("Recording discarded");
     patch({ screen: "home", status: "idle" });
   });
@@ -1007,11 +1006,9 @@ export function VCProvider({ children }: { children: ReactNode }) {
           patch({ authed: true, screen: "home", captures });
           return;
         }
-      } catch {
-        /* fall through to local demo mode */
-      }
+      } catch { /* remain signed out */ }
     }
-    patch({ authed: true, screen: "home", captures: seedCaptures() });
+    showToast("Private sign-in failed. Please try again.");
   });
   const signOut = useCallbackSafe(() => {
     if (supabaseEnabled) void signOutSupabase();
@@ -1026,44 +1023,51 @@ export function VCProvider({ children }: { children: ReactNode }) {
     patch({ screen: "detail", detailId: id }),
   );
   const backFromDetail = useCallbackSafe(() => patch({ screen: "library" }));
-  const deleteCapture = useCallbackSafe(() => {
+  const deleteCapture = useCallbackSafe(async () => {
     const id = stateRef.current.detailId;
-    showToast("Capture deleted");
-    patch((prev) => ({
-      screen: "library",
-      captures: prev.captures.filter((c) => c.id !== id),
-    }));
-    if (supabaseEnabled && id) void apiDeleteCapture(id);
+    if (!id) return;
+    try { if (supabaseEnabled) await apiDeleteCapture(id); patch((prev) => ({ screen: "library", captures: prev.captures.filter((c) => c.id !== id) })); showToast("Capture deleted"); }
+    catch { showToast("Delete failed — nothing was removed"); }
   });
-  const archiveCapture = useCallbackSafe(() => {
+  const archiveCapture = useCallbackSafe(async () => {
     const id = stateRef.current.detailId;
-    showToast("Capture archived");
-    patch((prev) => ({
+    if (!id) return;
+    try { if (supabaseEnabled) await apiUpdateCapture(id, { archived: true }); patch((prev) => ({
       screen: "library",
       captures: prev.captures.map((c) =>
         c.id === id ? { ...c, archived: true } : c,
       ),
-    }));
-    if (supabaseEnabled && id) void apiUpdateCapture(id, { archived: true });
+    })); showToast("Capture archived"); } catch { showToast("Archive failed — nothing changed"); }
   });
-  const toggleItemShare = useCallbackSafe((id: string) => {
-    showToast("Sharing updated");
+  const toggleItemShare = useCallbackSafe(async (id: string) => {
     let nextShared = false;
-    patch((prev) => ({
+    const capture = stateRef.current.captures.find(c => c.id === stateRef.current.detailId);
+    nextShared = !(capture?.items.find(it => it.id === id)?.shared ?? false);
+    try { if (supabaseEnabled) await apiSetItemShared(id, nextShared); patch((prev) => ({
       captures: prev.captures.map((c) =>
         c.id === stateRef.current.detailId
           ? {
               ...c,
               items: c.items.map((it) => {
                 if (it.id !== id) return it;
-                nextShared = !it.shared;
                 return { ...it, shared: nextShared };
               }),
             }
           : c,
       ),
-    }));
-    if (supabaseEnabled) void apiSetItemShared(id, nextShared);
+    })); showToast("Sharing updated"); } catch { showToast("Sharing update failed — nothing changed"); }
+  });
+  const updateSavedField = useCallbackSafe(async (field: "title" | "summary", value: string) => {
+    const id = stateRef.current.detailId;
+    const clean = value.trim();
+    if (!id || !clean) return;
+    const current = stateRef.current.captures.find((c) => c.id === id);
+    if (!current || current[field] === clean) return;
+    try {
+      if (supabaseEnabled) await apiUpdateCapture(id, { [field]: clean });
+      patch((prev) => ({ captures: prev.captures.map((c) => c.id === id ? { ...c, [field]: clean } : c) }));
+      showToast("Changes saved");
+    } catch { showToast("Update failed — nothing changed"); }
   });
 
   // ---------- settings ----------
@@ -1136,6 +1140,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     deleteCapture,
     archiveCapture,
     toggleItemShare,
+    updateSavedField,
     toggleMute,
     goTherapist,
     backFromTherapist,

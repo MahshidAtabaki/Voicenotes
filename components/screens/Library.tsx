@@ -42,6 +42,8 @@ export function Library() {
         " " +
         c.summary +
         " " +
+        (c.originalText ?? "") + " " + (c.transcript ?? "") + " " +
+        c.items.map((item) => `${item.sourceText} ${item.title} ${item.summary}`).join(" ") + " " +
         captureTags(c).join(" ")
       ).toLowerCase();
       if (!hay.includes(q)) return false;

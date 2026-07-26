@@ -60,9 +60,8 @@ export function Detail() {
           {c.createdAt}
           {dur ? ` · recorded ${dur}` : ""}
         </div>
-        <h1 style={css("font-size:26px;font-weight:600;letter-spacing:-.5px;color:#1d1d1f;margin:0 0 14px")}>
-          {c.title}
-        </h1>
+        <input defaultValue={c.title} aria-label="Capture title" onBlur={(e) => vc.updateSavedField("title", e.currentTarget.value)} style={css("display:block;width:100%;font-size:26px;font-weight:600;letter-spacing:-.5px;color:#1d1d1f;margin:0 0 8px;border:none;background:transparent;outline:none")} />
+        <textarea defaultValue={c.summary} aria-label="Capture summary" onBlur={(e) => vc.updateSavedField("summary", e.currentTarget.value)} style={css("display:block;width:100%;font:inherit;font-size:15px;line-height:1.45;color:#6e6e73;margin:0 0 14px;border:none;background:transparent;outline:none;resize:vertical")} />
         {isVoice && (
           <button
             className="vc-press"

@@ -211,7 +211,7 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
           }}
         >
           <div style={css("font-size:12px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:12px")}>
-            Live transcript · recording continues
+            Transcript appears after recording
           </div>
           {hasTranscript ? (
             <p style={css("font-size:21px;line-height:1.6;color:#fff;margin:0;letter-spacing:-.3px")}>
@@ -224,8 +224,7 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
             </p>
           ) : (
             <p style={css("font-size:19px;line-height:1.6;color:rgba(255,255,255,.5);margin:0")}>
-              Your words will appear here as you speak. You can&apos;t edit while
-              recording.
+              We&apos;re recording real audio. Your transcript will appear after you finish.
             </p>
           )}
         </div>

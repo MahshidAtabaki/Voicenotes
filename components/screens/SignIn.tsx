@@ -45,16 +45,7 @@ export function SignIn() {
             "height:52px;border:none;border-radius:14px;background:#0066cc;color:#fff;font-size:17px;font-weight:500;letter-spacing:-.2px;cursor:pointer",
           )}
         >
-          Continue with email
-        </button>
-        <button
-          className="vc-press"
-          onClick={vc.signIn}
-          style={css(
-            "height:52px;border:1px solid rgba(0,0,0,.12);border-radius:14px;background:#fff;color:#1d1d1f;font-size:17px;font-weight:500;letter-spacing:-.2px;cursor:pointer",
-          )}
-        >
-          Use the demo account
+          Continue privately
         </button>
         <p
           style={css(

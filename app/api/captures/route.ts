@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createCapture, getUserId, listCaptures } from "@/lib/supabase/repo";
 import type { CreateCaptureInput } from "@/lib/types";
+import { validateCapturePayload } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,18 +31,14 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-  const input = body as Partial<CreateCaptureInput>;
-  if (
-    !input ||
-    (input.kind !== "voice" && input.kind !== "text") ||
-    !Array.isArray(input.items)
-  ) {
+  const parsed = validateCapturePayload(body);
+  if (!parsed.success) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   try {
     const userId = await getUserId();
     if (!userId) return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-    const capture = await createCapture(input as CreateCaptureInput);
+    const capture = await createCapture(parsed.data as CreateCaptureInput);
     return NextResponse.json({ capture });
   } catch {
     return NextResponse.json({ error: "create_failed" }, { status: 500 });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { organizeServer } from "@/lib/ai";
 import type { CaptureKind } from "@/lib/types";
+import { authorize } from "@/lib/api-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
 const MAX_INPUT = 20_000;
 
 export async function POST(req: Request) {
+  const auth = await authorize(20);
+  if ("response" in auth) return auth.response;
   let body: unknown;
   try {
     body = await req.json();

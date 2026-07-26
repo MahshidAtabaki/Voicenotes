@@ -13,16 +13,16 @@ export function stopSpeaking() {
   }
 }
 
-export async function speak(text: string, muted: boolean): Promise<void> {
+export async function speak(prompt: "capture", muted: boolean): Promise<void> {
   if (muted || typeof window === "undefined") return;
   try {
-    let url = cache.get(text);
+    let url = cache.get(prompt);
     if (!url) {
-      const res = await fetch(`/api/tts?text=${encodeURIComponent(text)}`);
+      const res = await fetch(`/api/tts?prompt=${prompt}`);
       if (!res.ok) return; // not configured / failed — stay silent
       const blob = await res.blob();
       url = URL.createObjectURL(blob);
-      cache.set(text, url);
+      cache.set(prompt, url);
     }
     stopSpeaking();
     current = new Audio(url);
