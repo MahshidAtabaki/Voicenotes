@@ -61,23 +61,38 @@ export async function apiUpdateCapture(
   id: string,
   patch: { shared?: boolean; archived?: boolean; title?: string; summary?: string },
 ): Promise<void> {
-  await fetch(`/api/captures/${id}`, {
+  const res = await fetch(`/api/captures/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
+  if (!res.ok) throw new Error("update_failed");
 }
 
 export async function apiDeleteCapture(id: string): Promise<void> {
-  await fetch(`/api/captures/${id}`, { method: "DELETE" });
+  const res = await fetch(`/api/captures/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("delete_failed");
 }
 
 export async function apiSetItemShared(id: string, shared: boolean): Promise<void> {
-  await fetch(`/api/items/${id}`, {
+  const res = await fetch(`/api/items/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ shared }),
   });
+  if (!res.ok) throw new Error("sharing_failed");
+}
+
+export async function apiUpdateItem(
+  id: string,
+  patch: { title?: string; summary?: string },
+): Promise<void> {
+  const res = await fetch(`/api/items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("item_update_failed");
 }
 
 /* ---------- Audio ---------- */
@@ -97,12 +112,12 @@ export async function uploadAudio(blob: Blob): Promise<string | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return null;
+  if (!user) throw new Error("unauthenticated");
   const path = `${user.id}/${crypto.randomUUID()}.${extFor(blob)}`;
   const { error } = await supabase.storage
     .from("voice-captures")
     .upload(path, blob, { contentType: blob.type || "audio/webm", upsert: false });
-  if (error) return null;
+  if (error) throw error;
   return path;
 }
 
@@ -125,7 +140,13 @@ export async function transcribeAudio(blob: Blob): Promise<string | null> {
   const fd = new FormData();
   fd.append("audio", blob, `audio.${extFor(blob)}`);
   const res = await fetch("/api/transcribe", { method: "POST", body: fd });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error("transcription_failed");
   const data = (await res.json()) as { transcript?: string | null };
-  return data.transcript ?? null;
+  if (!data.transcript?.trim()) throw new Error("transcription_empty");
+  return data.transcript;
+}
+
+export async function removeAudio(path: string): Promise<void> {
+  const { error } = await createSupabaseBrowser().storage.from("voice-captures").remove([path]);
+  if (error) throw error;
 }

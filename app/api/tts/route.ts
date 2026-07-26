@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { synthesize } from "@/lib/elevenlabs";
+import { authorize } from "@/lib/api-security";
 
 export const runtime = "nodejs";
 
-const MAX_TEXT = 400;
+const PROMPTS = { capture: "What would you like to record?" } as const;
 
-/** GET /api/tts?text=... → MP3 audio for a short spoken prompt.
+/** GET /api/tts?prompt=... → MP3 audio for an approved prompt.
     Cacheable so static prompts are only synthesized once. */
 export async function GET(req: Request) {
-  const text = new URL(req.url).searchParams.get("text")?.trim();
-  if (!text) return NextResponse.json({ error: "missing_text" }, { status: 400 });
-  if (text.length > MAX_TEXT)
-    return NextResponse.json({ error: "text_too_long" }, { status: 413 });
+  const auth = await authorize(30);
+  if ("response" in auth) return auth.response;
+  const id = new URL(req.url).searchParams.get("prompt");
+  if (!id || !(id in PROMPTS)) return NextResponse.json({ error: "invalid_prompt" }, { status: 400 });
+  const text = PROMPTS[id as keyof typeof PROMPTS];
 
   try {
     const audio = await synthesize(text);

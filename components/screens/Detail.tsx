@@ -60,9 +60,8 @@ export function Detail() {
           {c.createdAt}
           {dur ? ` · recorded ${dur}` : ""}
         </div>
-        <h1 style={css("font-size:26px;font-weight:600;letter-spacing:-.5px;color:#1d1d1f;margin:0 0 14px")}>
-          {c.title}
-        </h1>
+        <input defaultValue={c.title} aria-label="Capture title" onBlur={(e) => vc.updateSavedField("title", e.currentTarget.value)} style={css("display:block;width:100%;font-size:26px;font-weight:600;letter-spacing:-.5px;color:#1d1d1f;margin:0 0 8px;border:none;background:transparent;outline:none")} />
+        <textarea defaultValue={c.summary} aria-label="Capture summary" onBlur={(e) => vc.updateSavedField("summary", e.currentTarget.value)} style={css("display:block;width:100%;font:inherit;font-size:15px;line-height:1.45;color:#6e6e73;margin:0 0 14px;border:none;background:transparent;outline:none;resize:vertical")} />
         {isVoice && (
           <button
             className="vc-press"
@@ -106,9 +105,7 @@ function DetailItem({ it }: { it: ThoughtItem }) {
   return (
     <div style={css("background:#fff;border-radius:20px;padding:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)")}>
       <div style={css("display:flex;align-items:center;justify-content:space-between;margin-bottom:12px")}>
-        <span style={css("font-size:18px;font-weight:600;letter-spacing:-.3px;color:#1d1d1f")}>
-          {it.title}
-        </span>
+        <input defaultValue={it.title} aria-label="Item title" onBlur={(e) => vc.updateSavedItemField(it.id, "title", e.currentTarget.value)} style={css("width:70%;border:none;background:transparent;outline:none;font-size:18px;font-weight:600;letter-spacing:-.3px;color:#1d1d1f")} />
         <button
           className="vc-press"
           onClick={() => vc.toggleItemShare(it.id)}
@@ -135,7 +132,7 @@ function DetailItem({ it }: { it: ThoughtItem }) {
       <div style={css("font-size:11px;font-weight:600;letter-spacing:.2px;text-transform:uppercase;color:#0066cc;margin-bottom:6px")}>
         Organised for you
       </div>
-      <p style={css("font-size:15px;line-height:1.5;color:#6e6e73;margin:0 0 10px")}>{it.summary}</p>
+      <textarea defaultValue={it.summary} aria-label="Item summary" onBlur={(e) => vc.updateSavedItemField(it.id, "summary", e.currentTarget.value)} style={css("display:block;width:100%;border:none;background:transparent;outline:none;resize:vertical;font:inherit;font-size:15px;line-height:1.5;color:#6e6e73;margin:0 0 10px")} />
       <div style={css("display:flex;flex-wrap:wrap;gap:6px")}>
         {chips.map((ch) => (
           <span

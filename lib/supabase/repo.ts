@@ -165,7 +165,7 @@ export async function createCapture(
     .single();
   if (sErr || !sessionRow) throw sErr ?? new Error("Insert failed");
   const sessionId = (sessionRow as { id: string }).id;
-
+  try {
   for (const it of input.items) {
     const { data: itemRow, error: iErr } = await supabase
       .from("thought_items")
@@ -207,8 +207,13 @@ export async function createCapture(
       if (tErr) throw tErr;
     }
   }
-
-  return getCapture(sessionId);
+  const result = await getCapture(sessionId);
+  if (!result) throw new Error("Saved capture could not be read");
+  return result;
+  } catch (error) {
+    await supabase.from("capture_sessions").delete().eq("id", sessionId);
+    throw error;
+  }
 }
 
 export async function updateCapture(
@@ -226,6 +231,15 @@ export async function setItemShared(itemId: string, shared: boolean): Promise<vo
     .from("thought_items")
     .update({ shared })
     .eq("id", itemId);
+  if (error) throw error;
+}
+
+export async function updateItem(
+  itemId: string,
+  patch: { shared?: boolean; title?: string; summary?: string },
+): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.from("thought_items").update(patch).eq("id", itemId);
   if (error) throw error;
 }
 
