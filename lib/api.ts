@@ -1,5 +1,6 @@
 import type { CaptureKind, OrganizeResult } from "./types";
 import { heuristicOrganize } from "./organize";
+import { ensurePrivateSession, supabaseEnabled } from "./data";
 
 /* Client-side API helpers. All provider secrets live server-side. */
 
@@ -11,6 +12,8 @@ export async function organize(
   input: string,
   kind: CaptureKind,
 ): Promise<OrganizeResult> {
+  if (supabaseEnabled && !(await ensurePrivateSession()))
+    throw new Error("unauthenticated");
   const res = await fetch("/api/organize", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
