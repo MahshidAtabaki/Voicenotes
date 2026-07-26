@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { transcribe } from "@/lib/elevenlabs";
 import { transcribeWithOpenAI } from "@/lib/openai-transcription";
-import { authorize } from "@/lib/api-security";
+import { authorizePrivateSession } from "@/lib/api-security";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export const maxDuration = 60;
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 export async function POST(req: Request) {
-  const auth = await authorize(10);
+  const auth = await authorizePrivateSession(10);
   if ("response" in auth) return auth.response;
   let form: FormData;
   try {
