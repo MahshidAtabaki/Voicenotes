@@ -153,7 +153,6 @@ export async function getAudioUrl(id: string): Promise<string | null> {
 /** Server-only ElevenLabs transcription. Returns the transcript unchanged,
     or null when transcription isn't available (client keeps its fallback). */
 export async function transcribeAudio(blob: Blob): Promise<string | null> {
-  if (!(await ensurePrivateSession())) throw new Error("unauthenticated");
   const fd = new FormData();
   fd.append("audio", blob, `audio.${extFor(blob)}`);
   const res = await fetch("/api/transcribe", { method: "POST", body: fd });
