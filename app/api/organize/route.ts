@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { organizeServer } from "@/lib/ai";
 import type { CaptureKind } from "@/lib/types";
-import { authorize } from "@/lib/api-security";
+import { authorizePrivateSession } from "@/lib/api-security";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const runtime = "nodejs";
@@ -12,7 +12,7 @@ const MAX_INPUT = 20_000;
 export async function POST(req: Request) {
   if (!isSupabaseConfigured())
     return NextResponse.json({ error: "not_configured" }, { status: 501 });
-  const auth = await authorize(20);
+  const auth = await authorizePrivateSession(20);
   if ("response" in auth) return auth.response;
   if (!process.env.OPENAI_API_KEY)
     return NextResponse.json({ error: "not_configured" }, { status: 501 });
