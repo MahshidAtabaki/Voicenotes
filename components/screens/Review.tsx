@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { useVC } from "@/lib/store";
-import type { EmotionTag, ReviewItem } from "@/lib/types";
+import type { ReviewItem } from "@/lib/types";
 import { css } from "../css";
 import { fmtDur } from "./shared";
 
 export function Review() {
   const vc = useVC();
   const items = vc.items;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const selectedIndex = Math.min(activeIndex, Math.max(0, items.length - 1));
+  const activeItem = items[selectedIndex];
   const isVoice = vc.captureKind !== "text";
   const sourceLabel = vc.captureKind === "text" ? "What you wrote" : "Your words";
   const multi = items.length > 1;
@@ -80,9 +84,47 @@ export function Review() {
       </div>
 
       <div style={css("padding:12px 16px 0")}>
-        {items.map((it, i) => (
-          <ReviewCard key={it.id} it={it} sourceLabel={sourceLabel} delay={`${i * 0.09}s`} />
-        ))}
+        {items.length > 1 && (
+          <div
+            role="tablist"
+            aria-label="Captured thoughts"
+            style={css(
+              "display:flex;gap:4px;overflow-x:auto;background:#e9e9eb;border-radius:14px;padding:4px;margin:0 4px 12px;scrollbar-width:none",
+            )}
+          >
+            {items.map((item, index) => {
+              const active = index === selectedIndex;
+              return (
+                <button
+                  key={item.id}
+                  role="tab"
+                  aria-selected={active}
+                  className="vc-press"
+                  onClick={() => setActiveIndex(index)}
+                  style={{
+                    ...css(
+                      "flex:1;min-width:92px;border:none;border-radius:11px;padding:9px 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;font-weight:600;cursor:pointer;transition:transform .32s cubic-bezier(.2,.8,.2,1),background .32s cubic-bezier(.2,.8,.2,1),color .2s ease,box-shadow .32s ease",
+                    ),
+                    background: active ? "#fff" : "transparent",
+                    color: active ? "#0066cc" : "#6e6e73",
+                    boxShadow: active ? "0 1px 4px rgba(0,0,0,.12)" : "none",
+                    transform: active ? "scale(1)" : "scale(.98)",
+                  }}
+                >
+                  {index + 1}. {item.title}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {activeItem && (
+          <ReviewCard
+            key={activeItem.id}
+            it={activeItem}
+            sourceLabel={sourceLabel}
+            delay="0s"
+          />
+        )}
       </div>
 
       <div style={css("padding:8px 24px 0")}>
@@ -214,36 +256,23 @@ function ReviewCard({
             "width:100%;border:none;background:none;font-size:15px;line-height:1.5;color:#6e6e73;padding:0;outline:none",
           )}
         />
-        <div style={css("font-size:11px;font-weight:600;letter-spacing:.2px;text-transform:uppercase;color:#8e8e93;margin:14px 0 8px")}>
-          Emotion · tap to confirm
-        </div>
-        <div style={css("display:flex;flex-wrap:wrap;gap:8px")}>
-          {it.emotions.map((e) => (
-            <EmotionChip key={e.label} itemId={it.id} e={e} />
-          ))}
-        </div>
         <div style={css("font-size:11px;font-weight:600;letter-spacing:.2px;text-transform:uppercase;color:#8e8e93;margin:16px 0 8px")}>
-          Topics
+          Tags
         </div>
         <div style={css("display:flex;flex-wrap:wrap;gap:8px")}>
+          {it.emotions.map((emotion) => (
+            <SelectedTag
+              key={`emotion-${emotion.label}`}
+              label={emotion.label}
+              onRemove={() => vc.toggleEmotion(it.id, emotion.label)}
+            />
+          ))}
           {it.topics.map((t) => (
-            <span
-              key={t}
-              style={css(
-                "display:flex;align-items:center;gap:7px;border:1px solid rgba(0,0,0,.1);background:#f5f5f7;color:#1d1d1f;border-radius:20px;padding:7px 12px;font-size:14px",
-              )}
-            >
-              {t}
-              <button
-                onClick={() => vc.removeTopic(it.id, t)}
-                aria-label={`Remove ${t}`}
-                style={css(
-                  "border:none;background:none;color:#8e8e93;cursor:pointer;font-size:15px;line-height:1;padding:0",
-                )}
-              >
-                ×
-              </button>
-            </span>
+            <SelectedTag
+              key={`topic-${t}`}
+              label={t}
+              onRemove={() => vc.removeTopic(it.id, t)}
+            />
           ))}
           <button
             onClick={() => {
@@ -262,28 +291,29 @@ function ReviewCard({
   );
 }
 
-function EmotionChip({ itemId, e }: { itemId: string; e: EmotionTag }) {
-  const vc = useVC();
+function SelectedTag({
+  label,
+  onRemove,
+}: {
+  label: string;
+  onRemove: () => void;
+}) {
   return (
-    <button
-      className="vc-press"
-      onClick={() => vc.toggleEmotion(itemId, e.label)}
-      style={{
-        ...css(
-          "display:flex;align-items:center;gap:6px;border-radius:20px;padding:7px 12px;font-size:14px;font-weight:500;cursor:pointer",
-        ),
-        border: e.confirmed ? "1px solid #0066cc" : "1px solid rgba(0,0,0,.12)",
-        background: e.confirmed ? "#0066cc" : "#fff",
-        color: e.confirmed ? "#fff" : "#1d1d1f",
-      }}
-    >
-      {e.confirmed && (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-          <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+    <span
+      style={css(
+        "display:flex;align-items:center;gap:7px;border:1px solid #0066cc;background:#0066cc;color:#fff;border-radius:20px;padding:7px 11px 7px 13px;font-size:14px;font-weight:500",
       )}
-      {e.label}
-      {e.pct && <span style={css("opacity:.6;font-size:12px")}>{e.pct}</span>}
-    </button>
+    >
+      {label}
+      <button
+        onClick={onRemove}
+        aria-label={`Remove ${label}`}
+        style={css(
+          "border:none;background:none;color:#fff;cursor:pointer;font-size:16px;line-height:1;padding:0;opacity:.8",
+        )}
+      >
+        ×
+      </button>
+    </span>
   );
 }
