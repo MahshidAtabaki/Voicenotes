@@ -83,6 +83,18 @@ export async function apiSetItemShared(id: string, shared: boolean): Promise<voi
   if (!res.ok) throw new Error("sharing_failed");
 }
 
+export async function apiUpdateItem(
+  id: string,
+  patch: { title?: string; summary?: string },
+): Promise<void> {
+  const res = await fetch(`/api/items/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("item_update_failed");
+}
+
 /* ---------- Audio ---------- */
 function extFor(blob: Blob): string {
   const t = blob.type;

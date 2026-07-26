@@ -38,7 +38,7 @@ export function Review() {
         >
           ✕
         </button>
-        {isVoice && (
+        {isVoice && !vc.isSamplePreview && (
           <>
             <button
               className="vc-press"
@@ -66,6 +66,11 @@ export function Review() {
       </div>
 
       <div style={css("padding:14px 24px 8px")}>
+        {vc.isSamplePreview && (
+          <div role="status" style={css("background:#fff3cd;color:#664d03;border-radius:14px;padding:12px 14px;margin-bottom:14px;font-size:14px;line-height:1.4")}>
+            <strong>Sample preview</strong> · These are example words only. They cannot be saved or shared as your recording.
+          </div>
+        )}
         <h1 style={css("font-size:26px;font-weight:600;letter-spacing:-.5px;color:#1d1d1f;margin:0 0 6px")}>
           {headline}
         </h1>
@@ -81,6 +86,11 @@ export function Review() {
       </div>
 
       <div style={css("padding:8px 24px 0")}>
+        {vc.isSamplePreview ? (
+          <button className="vc-press" onClick={vc.cancelReview} style={css("width:100%;height:54px;border:none;border-radius:16px;background:#0066cc;color:#fff;font-size:18px;font-weight:600;cursor:pointer")}>
+            Close sample preview
+          </button>
+        ) : <>
         <div
           style={css(
             "display:flex;align-items:center;justify-content:space-between;background:#fff;border-radius:16px;padding:14px 16px;margin-bottom:16px",
@@ -124,6 +134,7 @@ export function Review() {
         >
           Save {itemCountLabel}
         </button>
+        </>}
       </div>
     </div>
   );

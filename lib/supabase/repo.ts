@@ -234,6 +234,15 @@ export async function setItemShared(itemId: string, shared: boolean): Promise<vo
   if (error) throw error;
 }
 
+export async function updateItem(
+  itemId: string,
+  patch: { shared?: boolean; title?: string; summary?: string },
+): Promise<void> {
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.from("thought_items").update(patch).eq("id", itemId);
+  if (error) throw error;
+}
+
 /** Delete a capture and its stored audio (DB rows cascade). */
 export async function deleteCapture(id: string): Promise<void> {
   const supabase = await createSupabaseServer();

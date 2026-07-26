@@ -9,3 +9,9 @@ test("capture payload rejects wrong source fields and unsafe ranges", () => {
   assert.equal(validateCapturePayload({ ...valid, transcript: "wrong kind" }).success, false);
   assert.equal(validateCapturePayload({ ...valid, items: [{ ...valid.items[0], endCharacter: 999 }] }).success, false);
 });
+test("persisted voice requires audio and text forbids it", () => {
+  const voice = { ...valid, kind: "voice", originalText: null, transcript: "exact words", durationSeconds: 3 };
+  assert.equal(validateCapturePayload(voice).success, false);
+  assert.equal(validateCapturePayload({ ...voice, audioPath: "user/recording.webm" }).success, true);
+  assert.equal(validateCapturePayload({ ...valid, audioPath: "user/not-text.webm" }).success, false);
+});

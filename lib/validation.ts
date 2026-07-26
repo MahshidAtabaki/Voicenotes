@@ -22,6 +22,10 @@ export const captureSchema = z.object({
   if (source == null || (value.kind === "voice" ? value.originalText !== null : value.transcript !== null)) {
     ctx.addIssue({ code: "custom", message: "capture source does not match kind" }); return;
   }
+  if (value.kind === "voice" && !value.audioPath?.trim())
+    ctx.addIssue({ code: "custom", path: ["audioPath"], message: "persisted voice captures require audio" });
+  if (value.kind === "text" && value.audioPath !== null)
+    ctx.addIssue({ code: "custom", path: ["audioPath"], message: "text captures cannot contain audio" });
   for (const [index, it] of value.items.entries()) {
     if (it.endCharacter > source.length || source.slice(it.startCharacter, it.endCharacter) !== it.sourceText)
       ctx.addIssue({ code: "custom", path: ["items", index, "sourceText"], message: "sourceText must exactly match its character range" });
