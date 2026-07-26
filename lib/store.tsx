@@ -56,6 +56,29 @@ interface MicError {
   body: string;
 }
 
+interface BrowserSpeechRecognitionResult {
+  isFinal: boolean;
+  0: { transcript: string };
+}
+
+interface BrowserSpeechRecognitionEvent {
+  results: ArrayLike<BrowserSpeechRecognitionResult>;
+}
+
+interface BrowserSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
 interface State {
   authed: boolean;
   screen: Screen;
@@ -233,6 +256,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
   const buf = useRef<Uint8Array<ArrayBuffer> | null>(null);
   const raf = useRef<number | null>(null);
   const recorder = useRef<MediaRecorder | null>(null);
+  const speechRecognition = useRef<BrowserSpeechRecognition | null>(null);
+  const speechFinal = useRef("");
   const chunks = useRef<Blob[]>([]);
   const audioBlob = useRef<Blob | null>(null);
   const fakeAudio = useRef<boolean>(false);
@@ -265,6 +290,14 @@ export function VCProvider({ children }: { children: ReactNode }) {
   });
 
   const teardownMic = useCallbackSafe(() => {
+    if (speechRecognition.current) {
+      try {
+        speechRecognition.current.stop();
+      } catch {
+        /* noop */
+      }
+      speechRecognition.current = null;
+    }
     if (raf.current) cancelAnimationFrame(raf.current);
     if (recorder.current && recorder.current.state !== "inactive") {
       try {
@@ -429,6 +462,49 @@ export function VCProvider({ children }: { children: ReactNode }) {
     }, 1000);
   });
 
+  const startLiveSpeechRecognition = useCallbackSafe(() => {
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+      webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    };
+    const SpeechRecognitionCtor =
+      speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!SpeechRecognitionCtor) return;
+
+    try {
+      const recognition = new SpeechRecognitionCtor();
+      speechFinal.current = "";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || "en-GB";
+      recognition.onresult = (event) => {
+        let finalText = "";
+        let interimText = "";
+        for (let i = 0; i < event.results.length; i++) {
+          const result = event.results[i];
+          const text = result?.[0]?.transcript?.trim();
+          if (!text) continue;
+          if (result.isFinal) finalText += `${text} `;
+          else interimText += `${text} `;
+        }
+        speechFinal.current = finalText.trim();
+        const visible = `${speechFinal.current} ${interimText}`.trim();
+        if (visible) patch({ liveTranscript: visible });
+      };
+      recognition.onerror = () => {
+        // Live text is an enhancement. The recorded audio remains the source
+        // for the final ElevenLabs transcript.
+      };
+      recognition.onend = () => {
+        speechRecognition.current = null;
+      };
+      recognition.start();
+      speechRecognition.current = recognition;
+    } catch {
+      speechRecognition.current = null;
+    }
+  });
+
   const startMic = useCallbackSafe(async () => {
     patch({ micError: null });
     try {
@@ -470,6 +546,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         elapsed: 0,
         inputMode: "voice",
       });
+      startLiveSpeechRecognition();
       beginTick();
       drawLoop();
     } catch (err) {
@@ -671,8 +748,17 @@ export function VCProvider({ children }: { children: ReactNode }) {
 
     // Real transcription (ElevenLabs Scribe). Preserve the transcript unchanged.
     let transcript: string;
-    try { transcript = await transcribeAudio(blob) as string; }
-    catch { patch({ status: "failed", micError: null, procStep: -1 }); return; }
+    try {
+      transcript = await transcribeAudio(blob) as string;
+    } catch {
+      // If ElevenLabs is unavailable, continue with the real words captured by
+      // the browser during recording. Never replace them with sample content.
+      transcript = stateRef.current.liveTranscript.trim();
+      if (!transcript) {
+        patch({ status: "failed", micError: null, procStep: -1 });
+        return;
+      }
+    }
     patch({ liveTranscript: transcript });
 
     runPipeline("voice", transcript, 2);
@@ -684,7 +770,18 @@ export function VCProvider({ children }: { children: ReactNode }) {
       st.captureKind === "text" ? st.textDraft.trim() : st.liveTranscript.trim();
     if (st.captureKind === "voice" && !input && audioBlob.current) {
       patch({ status: "transcribing", procStep: 1 });
-      void transcribeAudio(audioBlob.current).then((text) => { patch({ liveTranscript: text ?? "" }); runPipeline("voice", text ?? "", 2); }).catch(() => patch({ status: "failed", micError: null }));
+      void transcribeAudio(audioBlob.current)
+        .then((text) => {
+          const transcript = text?.trim() || stateRef.current.liveTranscript.trim();
+          if (!transcript) throw new Error("transcription_empty");
+          patch({ liveTranscript: transcript });
+          runPipeline("voice", transcript, 2);
+        })
+        .catch(() => {
+          const transcript = stateRef.current.liveTranscript.trim();
+          if (transcript) runPipeline("voice", transcript, 2);
+          else patch({ status: "failed", micError: null });
+        });
     } else runPipeline(st.captureKind, input, st.captureKind === "voice" ? 2 : 0);
   });
 
