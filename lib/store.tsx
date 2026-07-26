@@ -206,7 +206,6 @@ function reduceMotion(): boolean {
 
 export function VCProvider({ children }: { children: ReactNode }) {
   const [s, setS] = useState<State>(initialState);
-  const [previewStorageInitialized, setPreviewStorageInitialized] = useState(false);
 
   // functional patch (mirrors setState semantics of the source prototype)
   const stateRef = useRef<State>(initialState);
@@ -237,6 +236,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
   const chunks = useRef<Blob[]>([]);
   const audioBlob = useRef<Blob | null>(null);
   const fakeAudio = useRef<boolean>(false);
+  const previewStorageInitialized = useRef(false);
   const bars = useRef<number[]>(new Array(48).fill(2));
 
   const drawLoopRef = useRef<() => void>(() => {});
@@ -300,16 +300,15 @@ export function VCProvider({ children }: { children: ReactNode }) {
   }, [teardownMic, clearTimers]);
 
   useEffect(() => {
-    if (!supabaseEnabled) {
+    if (supabaseEnabled) return;
+    if (!previewStorageInitialized.current) {
+      previewStorageInitialized.current = true;
       const saved = readPreviewCaptures(localStorage);
       patch({ captures: saved ?? seedCaptures() });
+      return;
     }
-    setPreviewStorageInitialized(true);
-  }, [patch]);
-  useEffect(() => {
-    if (!supabaseEnabled && previewStorageInitialized)
-      writePreviewCaptures(localStorage, s.captures);
-  }, [s.captures, previewStorageInitialized]);
+    writePreviewCaptures(localStorage, s.captures);
+  }, [s.captures, patch]);
 
   // Restore an existing Supabase session on load so a signed-in user lands home.
   useEffect(() => {
