@@ -12,7 +12,6 @@ import { Library } from "./screens/Library";
 import { Review } from "./screens/Review";
 import { Saved } from "./screens/Saved";
 import { Settings } from "./screens/Settings";
-import { SignIn } from "./screens/SignIn";
 import { Therapist } from "./screens/Therapist";
 
 export function AppShell() {
@@ -24,7 +23,6 @@ export function AppShell() {
 
   return (
     <PhoneFrame statusInk={statusInk}>
-      {vc.screen === "signin" && <SignIn />}
       {vc.screen === "home" && <Home />}
       {vc.screen === "capture" && <Capture />}
       {vc.screen === "review" && <Review />}
