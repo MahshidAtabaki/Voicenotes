@@ -16,12 +16,16 @@ import {
   apiListCaptures,
   apiSetItemShared,
   apiUpdateCapture,
+  getAudioUrl,
   hasSession,
   signInDemo,
   signOutSupabase,
   supabaseEnabled,
+  transcribeAudio,
+  uploadAudio,
 } from "./data";
 import { topicsToReviewItems } from "./organize";
+import { speak, stopSpeaking } from "./tts";
 import { demoTranscriptWords, seedCaptures, seedReviewItems } from "./seed";
 import type {
   AppStatus,
@@ -227,6 +231,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
   const bars = useRef<number[]>(new Array(48).fill(2));
 
   const drawLoopRef = useRef<() => void>(() => {});
+  const playbackEl = useRef<HTMLAudioElement | null>(null);
   const waveEl = useRef<HTMLCanvasElement | null>(null);
   const taEl = useRef<HTMLTextAreaElement | null>(null);
   const transEl = useRef<HTMLDivElement | null>(null);
@@ -278,6 +283,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
     return () => {
       teardownMic();
       clearTimers();
+      stopSpeaking();
+      if (playbackEl.current) playbackEl.current.pause();
       if (toastT.current) clearTimeout(toastT.current);
       if (expandT.current) clearTimeout(expandT.current);
     };
@@ -515,6 +522,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
     });
     if (expandT.current) clearTimeout(expandT.current);
     setTimeout(() => patch({ expanding: false, morph: null }), 90);
+    // Short spoken prompt (cached, silent when muted or unavailable).
+    void speak("What would you like to record?", stateRef.current.muted);
   });
 
   const goCapture = useCallbackSafe((e?: { currentTarget: HTMLElement }) => {
@@ -540,6 +549,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
   });
 
   const cancelCapture = useCallbackSafe(() => {
+    stopSpeaking();
     teardownMic();
     clearTimers();
     audioBlob.current = null;
@@ -549,6 +559,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       elapsed: 0,
       paused: false,
       micError: null,
+      pendingAudioPath: null,
     });
   });
 
@@ -568,64 +579,101 @@ export function VCProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  // ---------- processing pipeline ----------
-  const runPipeline = useCallbackSafe(async (kind: CaptureKind, input: string) => {
-    const started = Date.now();
-    const stepDelays = [700, 1300, 1300, 1300];
-    procTimers.current.forEach(clearTimeout);
-    procTimers.current = [];
-    let acc = 0;
-    // advance the checklist (4 steps) while we await the organiser
-    stepDelays.forEach((d, i) => {
-      acc += d;
-      procTimers.current.push(setTimeout(() => patch({ procStep: i + 1 }), acc));
-    });
-    const stepsDoneMs = acc;
-    // status hints (voice runs upload->transcribe->organise; text organises)
-    if (kind === "voice") {
-      patch({ status: "uploading", procStep: 0 });
-      procTimers.current.push(
-        setTimeout(() => patch({ status: "transcribing" }), stepDelays[0]),
-      );
-      procTimers.current.push(
-        setTimeout(
-          () => patch({ status: "organising" }),
-          stepDelays[0] + stepDelays[1],
-        ),
-      );
-    } else {
-      patch({ status: "organising", procStep: 0 });
-    }
-
-    try {
-      const result = await organize(input, kind);
-      const items = topicsToReviewItems(result, kind);
-      if (items.length === 0) throw new Error("empty");
-      const wait = Math.max(0, stepsDoneMs - (Date.now() - started));
-      setTimeout(() => {
-        procTimers.current.forEach(clearTimeout);
-        patch({ items, screen: "review", status: "reviewing", procStep: -1 });
-      }, wait);
-    } catch {
+  // ---------- processing pipeline (organise → review) ----------
+  // startStep: text begins at 0; voice begins at 2 (upload/transcribe already
+  // happened in doneRecording and advanced the first two checklist steps).
+  const runPipeline = useCallbackSafe(
+    async (kind: CaptureKind, input: string, startStep: number) => {
+      const TOTAL = 4;
+      const started = Date.now();
       procTimers.current.forEach(clearTimeout);
-      patch({ status: "failed", micError: null, procStep: -1 });
-    }
+      procTimers.current = [];
+      patch({ status: "organising", procStep: startStep });
+
+      // advance the remaining checklist steps visually while we await the model
+      let acc = 0;
+      for (let step = startStep + 1; step < TOTAL; step++) {
+        acc += 900;
+        const target = step;
+        procTimers.current.push(setTimeout(() => patch({ procStep: target }), acc));
+      }
+      const stepsDoneMs = acc;
+
+      try {
+        const result = await organize(input, kind);
+        const items = topicsToReviewItems(result, kind);
+        if (items.length === 0) throw new Error("empty");
+        const wait = Math.max(0, stepsDoneMs - (Date.now() - started));
+        setTimeout(() => {
+          procTimers.current.forEach(clearTimeout);
+          patch({
+            items,
+            screen: "review",
+            status: "reviewing",
+            procStep: TOTAL,
+          });
+        }, wait);
+      } catch {
+        procTimers.current.forEach(clearTimeout);
+        patch({ status: "failed", micError: null, procStep: -1 });
+      }
+    },
+  );
+
+  // Stop the recorder and resolve with the fully-assembled audio blob.
+  const finalizeAudio = useCallbackSafe((): Promise<Blob | null> => {
+    const mr = recorder.current;
+    if (!mr || mr.state === "inactive") return Promise.resolve(audioBlob.current);
+    return new Promise<Blob | null>((resolve) => {
+      mr.addEventListener("stop", () => resolve(audioBlob.current), { once: true });
+      try {
+        mr.stop();
+      } catch {
+        resolve(audioBlob.current);
+      }
+    });
   });
 
-  const doneRecording = useCallbackSafe(() => {
-    const transcript = stateRef.current.liveTranscript.trim();
+  const doneRecording = useCallbackSafe(async () => {
+    stopSpeaking();
+    const mockTranscript = stateRef.current.liveTranscript.trim();
+    // Preserve audio until upload/transcription — assemble the blob first.
+    const blob = await finalizeAudio();
     teardownMic();
     clearTimers();
     patch({ captureKind: "voice", status: "uploading", procStep: 0 });
-    runPipeline("voice", transcript);
+
+    // Persist audio to private storage (best-effort).
+    let audioPath: string | null = null;
+    if (supabaseEnabled && blob) {
+      try {
+        audioPath = await uploadAudio(blob);
+      } catch {
+        /* keep going — audio stays in memory for this session */
+      }
+    }
+    patch({ pendingAudioPath: audioPath, status: "transcribing", procStep: 1 });
+
+    // Real transcription (ElevenLabs Scribe). Preserve the transcript unchanged.
+    let transcript = mockTranscript;
+    if (blob) {
+      try {
+        const t = await transcribeAudio(blob);
+        if (t && t.trim()) transcript = t;
+      } catch {
+        /* fall back to whatever we already have */
+      }
+    }
+    patch({ liveTranscript: transcript });
+
+    runPipeline("voice", transcript, 2);
   });
 
   const retryProcessing = useCallbackSafe(() => {
     const st = stateRef.current;
     const input =
       st.captureKind === "text" ? st.textDraft.trim() : st.liveTranscript.trim();
-    patch({ status: "organising", procStep: 0 });
-    runPipeline(st.captureKind, input);
+    runPipeline(st.captureKind, input, st.captureKind === "voice" ? 2 : 0);
   });
 
   // ---------- text ----------
@@ -664,7 +712,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       status: "organising",
       procStep: 0,
     });
-    runPipeline("text", t);
+    runPipeline("text", t, 0);
   });
 
   // ---------- cancel confirmation ----------
@@ -895,7 +943,37 @@ export function VCProvider({ children }: { children: ReactNode }) {
   const openTranscript = useCallbackSafe(() =>
     showToast("Full transcript preserved unchanged"),
   );
-  const playAudio = useCallbackSafe(() => showToast("▶ Playing your recording…"));
+
+  const playUrl = useCallbackSafe((url: string) => {
+    try {
+      if (playbackEl.current) playbackEl.current.pause();
+      const el = new Audio(url);
+      playbackEl.current = el;
+      void el.play().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  });
+
+  const playAudio = useCallbackSafe(async () => {
+    // Just-recorded review: play the in-memory recording directly.
+    if (stateRef.current.screen === "review" && audioBlob.current) {
+      playUrl(URL.createObjectURL(audioBlob.current));
+      showToast("▶ Playing your recording…");
+      return;
+    }
+    // Saved capture: fetch a signed URL for the stored audio.
+    const id = stateRef.current.detailId;
+    if (supabaseEnabled && id) {
+      const url = await getAudioUrl(id);
+      if (url) {
+        playUrl(url);
+        showToast("▶ Playing your recording…");
+        return;
+      }
+    }
+    showToast("▶ Playing your recording…");
+  });
 
   // ---------- saved ----------
   const captureAnother = useCallbackSafe(() => {

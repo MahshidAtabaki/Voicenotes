@@ -79,3 +79,53 @@ export async function apiSetItemShared(id: string, shared: boolean): Promise<voi
     body: JSON.stringify({ shared }),
   });
 }
+
+/* ---------- Audio ---------- */
+function extFor(blob: Blob): string {
+  const t = blob.type;
+  if (t.includes("webm")) return "webm";
+  if (t.includes("ogg")) return "ogg";
+  if (t.includes("mp4") || t.includes("m4a")) return "mp4";
+  if (t.includes("wav")) return "wav";
+  return "webm";
+}
+
+/** Upload audio to the private bucket under the user's folder. Returns the path. */
+export async function uploadAudio(blob: Blob): Promise<string | null> {
+  if (!supabaseEnabled) return null;
+  const supabase = createSupabaseBrowser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const path = `${user.id}/${crypto.randomUUID()}.${extFor(blob)}`;
+  const { error } = await supabase.storage
+    .from("voice-captures")
+    .upload(path, blob, { contentType: blob.type || "audio/webm", upsert: false });
+  if (error) return null;
+  return path;
+}
+
+/** Fetch a short-lived signed URL to play a saved capture's audio. */
+export async function getAudioUrl(id: string): Promise<string | null> {
+  if (!supabaseEnabled) return null;
+  try {
+    const res = await fetch(`/api/captures/${id}/audio`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { url?: string };
+    return data.url ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Server-only ElevenLabs transcription. Returns the transcript unchanged,
+    or null when transcription isn't available (client keeps its fallback). */
+export async function transcribeAudio(blob: Blob): Promise<string | null> {
+  const fd = new FormData();
+  fd.append("audio", blob, `audio.${extFor(blob)}`);
+  const res = await fetch("/api/transcribe", { method: "POST", body: fd });
+  if (!res.ok) return null;
+  const data = (await res.json()) as { transcript?: string | null };
+  return data.transcript ?? null;
+}
