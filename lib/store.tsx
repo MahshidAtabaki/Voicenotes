@@ -17,8 +17,8 @@ import {
   apiSetItemShared,
   apiUpdateCapture,
   apiUpdateItem,
+  ensurePrivateSession,
   getAudioUrl,
-  hasSession,
   signInDemo,
   signOutSupabase,
   supabaseEnabled,
@@ -367,7 +367,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     let active = true;
     (async () => {
       try {
-        if (!(await hasSession()) && !(await signInDemo())) {
+        if (!(await ensurePrivateSession())) {
           return;
         }
       } catch {

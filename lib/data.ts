@@ -8,6 +8,8 @@ import type { CaptureSession, CreateCaptureInput } from "./types";
 export const supabaseEnabled = isSupabaseConfigured();
 
 /* ---------- Auth ---------- */
+let privateSessionPromise: Promise<boolean> | null = null;
+
 export async function signInDemo(): Promise<boolean> {
   const supabase = createSupabaseBrowser();
   const { error } = await supabase.auth.signInAnonymously();
@@ -25,6 +27,20 @@ export async function hasSession(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Ensure protected API calls never race the automatic anonymous sign-in. */
+export async function ensurePrivateSession(): Promise<boolean> {
+  if (!supabaseEnabled) return false;
+  if (!privateSessionPromise) {
+    privateSessionPromise = (async () => {
+      if (await hasSession()) return true;
+      return signInDemo();
+    })().finally(() => {
+      privateSessionPromise = null;
+    });
+  }
+  return privateSessionPromise;
 }
 
 export async function signOutSupabase(): Promise<void> {
@@ -137,6 +153,7 @@ export async function getAudioUrl(id: string): Promise<string | null> {
 /** Server-only ElevenLabs transcription. Returns the transcript unchanged,
     or null when transcription isn't available (client keeps its fallback). */
 export async function transcribeAudio(blob: Blob): Promise<string | null> {
+  if (!(await ensurePrivateSession())) throw new Error("unauthenticated");
   const fd = new FormData();
   fd.append("audio", blob, `audio.${extFor(blob)}`);
   const res = await fetch("/api/transcribe", { method: "POST", body: fd });
