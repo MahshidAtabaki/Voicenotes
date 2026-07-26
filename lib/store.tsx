@@ -119,8 +119,8 @@ interface State {
 }
 
 const initialState: State = {
-  authed: false,
-  screen: "signin",
+  authed: true,
+  screen: "home",
   status: "idle",
   inputMode: "voice",
   captureKind: "voice",
@@ -360,19 +360,26 @@ export function VCProvider({ children }: { children: ReactNode }) {
     writePreviewCaptures(localStorage, s.captures);
   }, [s.captures, patch]);
 
-  // Restore an existing Supabase session on load so a signed-in user lands home.
+  // Create or restore the private anonymous session automatically. There is no
+  // user-facing login gate for this MVP.
   useEffect(() => {
     if (!supabaseEnabled) return;
     let active = true;
     (async () => {
-      if (!(await hasSession())) return;
+      try {
+        if (!(await hasSession()) && !(await signInDemo())) {
+          return;
+        }
+      } catch {
+        return;
+      }
       let captures: CaptureSession[] = [];
       try {
         captures = await apiListCaptures();
       } catch {
         /* ignore */
       }
-      if (active) patch({ authed: true, screen: "home", captures });
+      if (active) patch({ authed: true, captures });
     })();
     return () => {
       active = false;
