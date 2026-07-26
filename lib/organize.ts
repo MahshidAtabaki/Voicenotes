@@ -126,7 +126,17 @@ function detectType(text: string): ContentType {
 }
 
 function titleFrom(text: string): string {
-  const words = text.trim().replace(/^[^A-Za-z0-9]+/, "").split(/\s+/);
+  const meaningful = text
+    .trim()
+    .replace(/^[^A-Za-z0-9]+/, "")
+    .replace(/^(hi|hello|hey)\b[\s,!.:-]*/i, "")
+    .replace(
+      /^(i|we)\s+(?:would like to|want to|wanted to|need to|was trying to|am trying to|was thinking|think|feel like)\s+/i,
+      "",
+    )
+    .replace(/^(i|we)\s+(?:am|was|were|have|had)\s+/i, "");
+  const firstIdea = meaningful.split(/[.!?;\n]/, 1)[0] || meaningful;
+  const words = firstIdea.split(/\s+/);
   const short = words.slice(0, 6).join(" ").replace(/[.,;:!?]+$/, "");
   return short.charAt(0).toUpperCase() + short.slice(1);
 }
