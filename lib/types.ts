@@ -122,6 +122,31 @@ export interface CaptureSession {
   items: ThoughtItem[];
 }
 
+/* ---------- Create payloads (client → server) ---------- */
+export interface CreateItemInput {
+  order: number;
+  type: ContentType;
+  sourceText: string;
+  startCharacter: number;
+  endCharacter: number;
+  title: string;
+  summary: string;
+  shared: boolean;
+  emotions: { label: string; confirmed: boolean }[];
+  topics: string[];
+}
+export interface CreateCaptureInput {
+  kind: CaptureKind;
+  title: string;
+  summary: string;
+  originalText: string | null;
+  transcript: string | null;
+  audioPath: string | null;
+  durationSeconds: number | null;
+  shared: boolean;
+  items: CreateItemInput[];
+}
+
 /* ---------- Library view helpers ---------- */
 export type LibraryFilter =
   | "all"

@@ -10,12 +10,24 @@ import {
   type ReactNode,
 } from "react";
 import { organize } from "./api";
+import {
+  apiCreateCapture,
+  apiDeleteCapture,
+  apiListCaptures,
+  apiSetItemShared,
+  apiUpdateCapture,
+  hasSession,
+  signInDemo,
+  signOutSupabase,
+  supabaseEnabled,
+} from "./data";
 import { topicsToReviewItems } from "./organize";
 import { demoTranscriptWords, seedCaptures, seedReviewItems } from "./seed";
 import type {
   AppStatus,
   CaptureKind,
   CaptureSession,
+  CreateCaptureInput,
   InputMode,
   LibraryFilter,
   LibrarySort,
@@ -64,6 +76,8 @@ interface State {
   muted: boolean;
   expanding: boolean;
   morph: MorphState | null;
+  /** Storage path of the uploaded audio for the current capture (voice). */
+  pendingAudioPath: string | null;
 }
 
 const initialState: State = {
@@ -94,6 +108,7 @@ const initialState: State = {
   muted: false,
   expanding: false,
   morph: null,
+  pendingAudioPath: null,
 };
 
 export interface VCStore extends State {
@@ -267,6 +282,27 @@ export function VCProvider({ children }: { children: ReactNode }) {
       if (expandT.current) clearTimeout(expandT.current);
     };
   }, [teardownMic, clearTimers]);
+
+  // Restore an existing Supabase session on load so a signed-in user lands home.
+  useEffect(() => {
+    if (!supabaseEnabled) return;
+    let active = true;
+    (async () => {
+      if (!(await hasSession())) return;
+      let captures: CaptureSession[] = [];
+      try {
+        captures = await apiListCaptures();
+      } catch {
+        /* ignore */
+      }
+      if (active) patch({ authed: true, screen: "home", captures });
+    })();
+    return () => {
+      active = false;
+    };
+    // patch is stable; run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---------- waveform ----------
   const drawLoop = useCallbackSafe(() => {
@@ -768,28 +804,33 @@ export function VCProvider({ children }: { children: ReactNode }) {
     toastT.current = setTimeout(() => patch({ toast: null }), 2200);
   });
 
-  const saveAll = useCallbackSafe(() => {
+  const saveAll = useCallbackSafe(async () => {
     const st = stateRef.current;
     const items = st.items;
     const n = items.length;
     if (n === 0) return;
-    const now = new Date();
-    const session: CaptureSession = {
-      id: `c_${Date.now()}`,
+    const localId = `c_${Date.now()}`;
+    const title = n > 1 ? "A lot on my mind" : items[0].title;
+    const summary = items[0]?.summary ?? "";
+    const originalText = st.captureKind === "text" ? st.textDraft.trim() : null;
+    const transcript = st.captureKind === "voice" ? st.liveTranscript.trim() : null;
+    const durationSeconds = st.captureKind === "voice" ? st.elapsed : null;
+
+    const localSession: CaptureSession = {
+      id: localId,
       kind: st.captureKind,
-      title: n > 1 ? "A lot on my mind" : items[0].title,
-      summary: items[0]?.summary ?? "",
-      originalText: st.captureKind === "text" ? st.textDraft.trim() : null,
-      transcript:
-        st.captureKind === "voice" ? st.liveTranscript.trim() : null,
-      audioPath: null,
-      durationSeconds: st.captureKind === "voice" ? st.elapsed : null,
+      title,
+      summary,
+      originalText,
+      transcript,
+      audioPath: st.pendingAudioPath,
+      durationSeconds,
       shared: st.reviewShare,
       archived: false,
       createdAt: "Just now",
       items: items.map((it) => ({
         id: it.id,
-        sessionId: `c_${now.getTime()}`,
+        sessionId: localId,
         order: it.order,
         type: it.type,
         sourceText: it.sourceText,
@@ -805,9 +846,46 @@ export function VCProvider({ children }: { children: ReactNode }) {
     patch((prev) => ({
       screen: "saved",
       status: "saved",
-      captures: [session, ...prev.captures],
-      detailId: session.id,
+      captures: [localSession, ...prev.captures],
+      detailId: localId,
     }));
+
+    if (supabaseEnabled) {
+      const input: CreateCaptureInput = {
+        kind: st.captureKind,
+        title,
+        summary,
+        originalText,
+        transcript,
+        audioPath: st.pendingAudioPath,
+        durationSeconds,
+        shared: st.reviewShare,
+        items: items.map((it) => ({
+          order: it.order,
+          type: it.type,
+          sourceText: it.sourceText,
+          startCharacter: it.startCharacter,
+          endCharacter: it.endCharacter,
+          title: it.title,
+          summary: it.summary,
+          shared: st.reviewShare,
+          emotions: it.emotions,
+          topics: it.topics,
+        })),
+      };
+      try {
+        const created = await apiCreateCapture(input);
+        if (created) {
+          patch((prev) => ({
+            captures: prev.captures.map((c) => (c.id === localId ? created : c)),
+            detailId: prev.detailId === localId ? created.id : prev.detailId,
+            pendingAudioPath: null,
+          }));
+        }
+      } catch {
+        /* keep the local copy so the user never loses their save */
+      }
+    }
   });
 
   const cancelReview = useCallbackSafe(() => {
@@ -837,12 +915,30 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (screen === "capture") goCapture();
     else patch({ screen });
   });
-  const signIn = useCallbackSafe(() =>
-    patch({ authed: true, screen: "home", captures: seedCaptures() }),
-  );
-  const signOut = useCallbackSafe(() =>
-    patch({ ...initialState, captures: [] }),
-  );
+  const signIn = useCallbackSafe(async () => {
+    if (supabaseEnabled) {
+      try {
+        const ok = await signInDemo();
+        if (ok) {
+          let captures: CaptureSession[] = [];
+          try {
+            captures = await apiListCaptures();
+          } catch {
+            /* empty library is fine for a fresh account */
+          }
+          patch({ authed: true, screen: "home", captures });
+          return;
+        }
+      } catch {
+        /* fall through to local demo mode */
+      }
+    }
+    patch({ authed: true, screen: "home", captures: seedCaptures() });
+  });
+  const signOut = useCallbackSafe(() => {
+    if (supabaseEnabled) void signOutSupabase();
+    patch({ ...initialState, captures: [] });
+  });
 
   // ---------- library / detail ----------
   const setSearch = useCallbackSafe((v: string) => patch({ search: v }));
@@ -859,6 +955,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       screen: "library",
       captures: prev.captures.filter((c) => c.id !== id),
     }));
+    if (supabaseEnabled && id) void apiDeleteCapture(id);
   });
   const archiveCapture = useCallbackSafe(() => {
     const id = stateRef.current.detailId;
@@ -869,21 +966,26 @@ export function VCProvider({ children }: { children: ReactNode }) {
         c.id === id ? { ...c, archived: true } : c,
       ),
     }));
+    if (supabaseEnabled && id) void apiUpdateCapture(id, { archived: true });
   });
   const toggleItemShare = useCallbackSafe((id: string) => {
     showToast("Sharing updated");
+    let nextShared = false;
     patch((prev) => ({
       captures: prev.captures.map((c) =>
         c.id === stateRef.current.detailId
           ? {
               ...c,
-              items: c.items.map((it) =>
-                it.id === id ? { ...it, shared: !it.shared } : it,
-              ),
+              items: c.items.map((it) => {
+                if (it.id !== id) return it;
+                nextShared = !it.shared;
+                return { ...it, shared: nextShared };
+              }),
             }
           : c,
       ),
     }));
+    if (supabaseEnabled) void apiSetItemShared(id, nextShared);
   });
 
   // ---------- settings ----------
