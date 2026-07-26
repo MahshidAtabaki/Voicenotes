@@ -19,6 +19,7 @@ import {
   apiUpdateItem,
   ensurePrivateSession,
   getAudioUrl,
+  hasSession,
   signInDemo,
   signOutSupabase,
   supabaseEnabled,
@@ -366,20 +367,32 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (!supabaseEnabled) return;
     let active = true;
     (async () => {
+      const localCaptures = readPreviewCaptures(localStorage) ?? [];
       try {
         if (!(await ensurePrivateSession())) {
+          if (active) patch({ authed: true, captures: localCaptures });
           return;
         }
       } catch {
+        if (active) patch({ authed: true, captures: localCaptures });
         return;
       }
       let captures: CaptureSession[] = [];
       try {
         captures = await apiListCaptures();
       } catch {
-        /* ignore */
+        captures = localCaptures;
       }
-      if (active) patch({ authed: true, captures });
+      if (active) {
+        const remoteIds = new Set(captures.map((capture) => capture.id));
+        patch({
+          authed: true,
+          captures: [
+            ...captures,
+            ...localCaptures.filter((capture) => !remoteIds.has(capture.id)),
+          ],
+        });
+      }
     })();
     return () => {
       active = false;
@@ -1000,12 +1013,13 @@ export function VCProvider({ children }: { children: ReactNode }) {
     const durationSeconds = st.captureKind === "voice" ? st.elapsed : null;
 
     patch({ status: "saving" });
+    const saveRemotely = supabaseEnabled && await hasSession();
     let audioPath = st.pendingAudioPath;
-    if (supabaseEnabled && st.captureKind === "voice" && !audioPath) {
+    if (saveRemotely && st.captureKind === "voice" && !audioPath) {
       try { if (!audioBlob.current) throw new Error("missing_audio"); audioPath = await uploadAudio(audioBlob.current); }
       catch { patch({ status: "reviewing" }); showToast("Audio upload failed — try saving again"); return; }
     }
-    if (!supabaseEnabled && st.captureKind === "voice") {
+    if (!saveRemotely && st.captureKind === "voice") {
       try {
         if (!audioBlob.current) throw new Error("missing_audio");
         await saveLocalAudio(localId, audioBlob.current);
@@ -1043,7 +1057,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         shared: st.reviewShare,
       })),
     };
-    if (supabaseEnabled) {
+    if (saveRemotely) {
       const input: CreateCaptureInput = {
         kind: st.captureKind,
         title,
@@ -1074,7 +1088,16 @@ export function VCProvider({ children }: { children: ReactNode }) {
       } catch {
         patch({ status: "reviewing", pendingAudioPath: audioPath }); showToast("Save failed — your recording is ready to retry"); return;
       }
-    } else patch((prev) => ({ screen: "saved", status: "saved", captures: [localSession, ...prev.captures], detailId: localId }));
+    } else patch((prev) => {
+      const captures = [localSession, ...prev.captures];
+      writePreviewCaptures(localStorage, captures);
+      return {
+        screen: "saved",
+        status: "saved",
+        captures,
+        detailId: localId,
+      };
+    });
   });
 
   const cancelReview = useCallbackSafe(async () => {
