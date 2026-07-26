@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { transcribe } from "@/lib/elevenlabs";
+import { transcribeWithOpenAI } from "@/lib/openai-transcription";
 import { authorize } from "@/lib/api-security";
 
 export const runtime = "nodejs";
@@ -25,11 +26,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "audio_too_large" }, { status: 413 });
   }
 
+  let transcript: string | null = null;
   try {
-    const transcript = await transcribe(audio);
-    if (!transcript) return NextResponse.json({ error: "not_configured" }, { status: 501 });
-    return NextResponse.json({ transcript });
+    transcript = await transcribe(audio);
   } catch {
+    /* Try the secondary provider below. */
+  }
+  if (!transcript) {
+    try {
+      transcript = await transcribeWithOpenAI(audio);
+    } catch {
+      /* Return one safe error after both providers fail. */
+    }
+  }
+  if (!transcript) {
     return NextResponse.json({ error: "transcription_failed" }, { status: 502 });
   }
+  return NextResponse.json({ transcript });
 }
