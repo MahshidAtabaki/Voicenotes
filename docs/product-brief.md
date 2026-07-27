@@ -28,6 +28,23 @@ Voice is an interface for the problem, not the product's value by itself. It is
 useful because it is fast, natural, and accessible when the user is emotional,
 tired, walking, or too overwhelmed to type.
 
+## Usability research insight: ask less, understand more
+
+A usability participant said they valued capturing moments between support
+sessions, but did not want to reconstruct the full context every time they
+recorded. Repeating background information felt effortful and could make them
+soften or simplify what they really felt.
+
+They expected the product, with clear permission, to make better use of context
+they had already created elsewhere, such as calendar events, personal notes, or
+notes from support conversations. The goal is not to infer private facts
+silently. It is to reduce repeated explanation and help the founder express how
+they feel while keeping them in control of what context is used.
+
+Product implication: when choosing future features, prefer ways to bring in or
+suggest relevant existing context with explicit consent, instead of asking the
+founder to restate everything from scratch.
+
 ## Two core problems
 
 ### 1. Important thoughts disappear before support conversations
