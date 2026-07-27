@@ -31,19 +31,24 @@ tired, walking, or too overwhelmed to type.
 ## Usability research insight: ask less, understand more
 
 A usability participant said they valued capturing moments between support
-sessions, but did not want to reconstruct the full context every time they
-recorded. Repeating background information felt effortful and could make them
-soften or simplify what they really felt.
+sessions, but repeatedly reconstructing the full background of each situation
+felt like too much work. They said that when forced to explain everything again,
+they tended to soften, shorten, or simplify what they really felt.
 
-They expected the product, with clear permission, to make better use of context
-they had already created elsewhere, such as calendar events, personal notes, or
-notes from support conversations. The goal is not to infer private facts
-silently. It is to reduce repeated explanation and help the founder express how
-they feel while keeping them in control of what context is used.
+The participant did not expect previous VoiceNotes captures alone to solve this
+problem. They specifically expected the product, with clear permission, to use
+relevant context that already exists outside the app, such as calendar events,
+personal notes, work notes, or notes from support conversations. They wanted to
+focus on what they feel now while the product helps recover the surrounding facts.
 
-Product implication: when choosing future features, prefer ways to bring in or
-suggest relevant existing context with explicit consent, instead of asking the
-founder to restate everything from scratch.
+The product must not silently infer or import private information. Any external
+context source requires an explicit connection, clear indication of what is being
+used, and an easy way to exclude or disconnect it.
+
+Product implication: when improving capture effort, do not treat resurfacing old
+VoiceNotes entries as a complete solution. Prefer an explicitly consented flow
+that brings in or suggests relevant external context, then lets the founder
+confirm, remove, or correct that context before it influences the capture.
 
 ## Two core problems
 
