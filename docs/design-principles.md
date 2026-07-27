@@ -23,10 +23,6 @@ controllable, and respectful of privacy. The product should do more of the work
 when it can do so safely, rather than asking the user to reconstruct, transfer,
 or organise information the system could reasonably handle.
 
-New architecture, integrations, dependencies, routes, or configuration may be
-introduced when they materially simplify the user's experience. Keep that work
-focused on the user outcome and avoid unrelated complexity.
-
 ## Apple-inspired motion philosophy
 
 Motion communicates physical and spatial relationships.
