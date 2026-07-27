@@ -9,6 +9,24 @@ calm, direct, private, and physically understandable.
 The approved mobile web design is the visual starting point. Changes should
 improve clarity or reliability without turning functional fixes into redesigns.
 
+## User-centred simplicity
+
+When choosing between possible solutions, prioritise the one that removes the
+most effort, repetition, and decision-making from the user.
+
+Optimise for simplicity in the user's experience, not merely simplicity in the
+implementation. A smaller code change is not better when it leaves meaningful
+work for the founder to perform manually.
+
+Prefer flows that anticipate and reduce user effort while remaining transparent,
+controllable, and respectful of privacy. The product should do more of the work
+when it can do so safely, rather than asking the user to reconstruct, transfer,
+or organise information the system could reasonably handle.
+
+New architecture, integrations, dependencies, routes, or configuration may be
+introduced when they materially simplify the user's experience. Keep that work
+focused on the user outcome and avoid unrelated complexity.
+
 ## Apple-inspired motion philosophy
 
 Motion communicates physical and spatial relationships.
