@@ -9,6 +9,24 @@ Built from the approved **Voice Capture** design prototype (`Voice Capture.dc.ht
 which is the source of truth for UI, copy, navigation, states, responsive
 behaviour, and motion.
 
+## Product and agent context
+
+The repository carries the product context needed by human and AI contributors:
+
+- [`AGENTS.md`](AGENTS.md) — mandatory repository guidance and invariants
+- [`docs/product-brief.md`](docs/product-brief.md) — user, problem, value,
+  therapist relationship, MVP scope, and non-goals
+- [`docs/design-principles.md`](docs/design-principles.md) — Apple-inspired
+  interaction, motion, capture, review, navigation, and playback principles
+- [`docs/ai-behaviour.md`](docs/ai-behaviour.md) — original-word preservation,
+  semantic titles, tags, multi-topic separation, validation, and fallback
+- [`docs/architecture.md`](docs/architecture.md) — current system, providers,
+  sessions, persistence modes, routes, failures, and verification
+
+New coding-agent sessions should read `AGENTS.md` before making changes. Product
+documentation explains the intended experience; architecture documentation
+records what the current MVP actually implements.
+
 ## Stack
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
@@ -31,8 +49,10 @@ behaviour, and motion.
    suggested emotion/topic tags. The range is validated server-side; invalid
    output is retried once, then falls back to the whole input as a single item.
 4. **Review** — edit generated metadata, confirm tags; originals stay untouched.
-5. **Save** — persisted to Supabase under Row Level Security. Captures are
-   private by default; sharing is explicit and per-item.
+5. **Save** — persisted to Supabase under Row Level Security when a Supabase user
+   session exists. Without one, metadata and audio remain private on the current
+   browser and device through localStorage and IndexedDB. Sharing is explicit
+   and per-item.
 6. **Manage** — search, filter, reopen, edit, archive, delete. Deleting a voice
    capture also removes its stored audio.
 
