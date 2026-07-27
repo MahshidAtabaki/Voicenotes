@@ -36,6 +36,11 @@ records what the current MVP actually implements.
 - **ElevenLabs** — Scribe v2 speech-to-text + text-to-speech (server-only)
 - **Zod** for server-side validation; **node:test** for unit tests
 
+The current stack is a baseline, not a fixed boundary. When a justified product
+change requires it, the implementation may add an integration, dependency,
+server route, or environment variable, provided the existing privacy, validation,
+and error-handling rules are preserved.
+
 ## How it works
 
 1. **Capture** — record real audio (MediaRecorder + Web Audio; the circular
