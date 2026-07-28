@@ -35,6 +35,7 @@ import { readPreviewCaptures, writePreviewCaptures } from "./local-preview";
 import { deleteLocalAudio, getLocalAudio, saveLocalAudio } from "./local-audio";
 import type {
   AppStatus,
+  BackgroundContext,
   CaptureKind,
   CaptureSession,
   CreateCaptureInput,
@@ -117,6 +118,8 @@ interface State {
   playerCurrent: number;
   playerDuration: number;
   playerTitle: string;
+  backgroundSheetOpen: boolean;
+  selectedBackground: BackgroundContext[];
 }
 
 const initialState: State = {
@@ -154,6 +157,8 @@ const initialState: State = {
   playerCurrent: 0,
   playerDuration: 0,
   playerTitle: "Recording",
+  backgroundSheetOpen: false,
+  selectedBackground: [],
 };
 
 export interface VCStore extends State {
@@ -180,6 +185,10 @@ export interface VCStore extends State {
   startVoiceFromText: () => void;
   setTextDraft: (v: string) => void;
   sendText: () => void;
+  openBackgroundSheet: () => void;
+  closeBackgroundSheet: () => void;
+  toggleBackground: (item: BackgroundContext) => void;
+  removeBackground: (id: string) => void;
   // transcript reveal
   onWaveDown: (e: React.PointerEvent) => void;
   onWaveMove: (e: React.PointerEvent) => void;
@@ -649,6 +658,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
       autoScroll: true,
       isSamplePreview: false,
       pendingAudioPath: null,
+      backgroundSheetOpen: false,
+      selectedBackground: [],
     });
     if (expandT.current) clearTimeout(expandT.current);
     setTimeout(() => patch({ expanding: false, morph: null }), 90);
@@ -844,6 +855,19 @@ export function VCProvider({ children }: { children: ReactNode }) {
 
   const setTextDraft = useCallbackSafe((v: string) => {
     patch({ textDraft: v });
+  });
+
+  const openBackgroundSheet = useCallbackSafe(() => patch({ backgroundSheetOpen: true }));
+  const closeBackgroundSheet = useCallbackSafe(() => patch({ backgroundSheetOpen: false }));
+  const toggleBackground = useCallbackSafe((item: BackgroundContext) => {
+    patch((prev) => ({
+      selectedBackground: prev.selectedBackground.some((selected) => selected.id === item.id)
+        ? prev.selectedBackground.filter((selected) => selected.id !== item.id)
+        : [...prev.selectedBackground, item],
+    }));
+  });
+  const removeBackground = useCallbackSafe((id: string) => {
+    patch((prev) => ({ selectedBackground: prev.selectedBackground.filter((item) => item.id !== id) }));
   });
 
   const sendText = useCallbackSafe(() => {
@@ -1380,6 +1404,10 @@ export function VCProvider({ children }: { children: ReactNode }) {
     startVoiceFromText,
     setTextDraft,
     sendText,
+    openBackgroundSheet,
+    closeBackgroundSheet,
+    toggleBackground,
+    removeBackground,
     onWaveDown,
     onWaveMove,
     onWaveUp,

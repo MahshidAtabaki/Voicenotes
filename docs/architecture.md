@@ -59,6 +59,19 @@ streaming transcription during recording. Never simulate a live transcript.
 3. The server returns validated organised topics.
 4. The user reviews and saves using the same persistence path as voice.
 
+### Optional background (demo UI)
+
+The capture composer includes an optional, explicit background picker with local
+demo examples for calendar, personal notes, work notes, and support-session
+notes. These examples do not represent connected accounts and are never imported
+automatically. Selected background remains visually and structurally separate
+from recorded or typed source words, and the user can remove it at any time.
+
+The current implementation is an interaction demonstration: selected background
+is not sent to the organiser or persisted with a saved capture. A production
+integration requires an explicit source-connection and consent model, a separate
+validated context payload and persistence schema, and clear revocation behaviour.
+
 Text processing states and copy must never refer to a recording or voice.
 
 ## AI organisation

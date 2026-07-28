@@ -1,6 +1,7 @@
 import { useVC } from "@/lib/store";
 import type { CaptureKind } from "@/lib/types";
 import { css } from "../css";
+import { demoBackgroundContext } from "@/lib/background-context";
 
 const REVEAL = 190;
 
@@ -340,6 +341,7 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
           "position:absolute;left:0;right:0;bottom:0;z-index:7;padding:14px 16px 30px;background:linear-gradient(rgba(8,27,49,0),#081b31 34%)",
         )}
       >
+        <BackgroundSummary />
         {isVoice && (
           <div style={css("display:flex;align-items:center;gap:10px")}>
             <button
@@ -432,6 +434,61 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
 
       {/* confirmation sheet */}
       {vc.confirm != null && <ConfirmSheet />}
+      {vc.backgroundSheetOpen && <BackgroundSheet />}
+    </div>
+  );
+}
+
+function BackgroundSummary() {
+  const vc = useVC();
+  return (
+    <div style={css("margin:0 2px 10px")}>
+      {vc.selectedBackground.length > 0 && (
+        <div className="vc-scroll" style={css("display:flex;gap:7px;overflow-x:auto;margin-bottom:9px")}>
+          {vc.selectedBackground.map((item) => (
+            <span key={item.id} style={css("flex:none;display:flex;align-items:center;gap:7px;max-width:220px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:6px 8px 6px 11px;font-size:12px;color:#fff")}>
+              <span style={css("overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}><strong>{item.source}</strong> · {item.title}</span>
+              <button aria-label={`Remove ${item.title}`} onClick={() => vc.removeBackground(item.id)} style={css("border:none;background:rgba(255,255,255,.14);color:#fff;width:20px;height:20px;border-radius:50%;cursor:pointer")}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <button className="vc-press" onClick={vc.openBackgroundSheet} style={css("border:none;background:none;color:rgba(255,255,255,.82);font-size:14px;font-weight:600;padding:2px 4px;cursor:pointer")}>
+        <span aria-hidden="true">＋</span> {vc.selectedBackground.length ? "Edit background" : "Add background"}
+      </button>
+    </div>
+  );
+}
+
+function BackgroundSheet() {
+  const vc = useVC();
+  return (
+    <div role="presentation" onClick={vc.closeBackgroundSheet} style={css("position:absolute;inset:0;z-index:12;background:rgba(0,0,0,.52);display:flex;align-items:flex-end")}>
+      <section role="dialog" aria-modal="true" aria-labelledby="background-title" onClick={(event) => event.stopPropagation()} className="vc-sheet vc-scroll" style={css("width:100%;max-height:88%;overflow-y:auto;background:#f5f5f7;border-radius:26px 26px 0 0;padding:10px 18px 30px;color:#1d1d1f")}>
+        <div style={css("width:40px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 16px")} />
+        <div style={css("display:flex;align-items:flex-start;gap:12px;margin:0 4px 8px")}>
+          <div style={css("flex:1")}>
+            <h2 id="background-title" style={css("font-size:22px;letter-spacing:-.4px;margin:0 0 5px")}>Add background</h2>
+            <p style={css("font-size:14px;line-height:1.45;color:#6e6e73;margin:0")}>Choose only what is relevant. Background is optional, stays separate from your words, and is never shared automatically.</p>
+          </div>
+          <button aria-label="Close background" onClick={vc.closeBackgroundSheet} style={css("flex:none;border:none;width:34px;height:34px;border-radius:50%;background:#e5e5e7;color:#6e6e73;font-size:20px;cursor:pointer")}>×</button>
+        </div>
+        <div style={css("background:#eaf3ff;color:#174f86;border-radius:14px;padding:11px 13px;margin:14px 4px;font-size:13px;line-height:1.4")}>Demo sources only · No accounts are connected and nothing has been imported automatically.</div>
+        <div style={css("display:flex;flex-direction:column;gap:9px;margin:0 4px")}>
+          {demoBackgroundContext.map((item) => {
+            const selected = vc.selectedBackground.some((selectedItem) => selectedItem.id === item.id);
+            return <button key={item.id} aria-pressed={selected} onClick={() => vc.toggleBackground(item)} className="vc-press" style={{...css("width:100%;display:flex;gap:12px;text-align:left;border-radius:17px;padding:14px;background:#fff;cursor:pointer"),border:selected ? "2px solid #0066cc" : "2px solid transparent"}}>
+              <span aria-hidden="true" style={{...css("flex:none;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700"),background:selected ? "#0066cc" : "#e9e9eb",color:selected ? "#fff" : "#8e8e93"}}>{selected ? "✓" : ""}</span>
+              <span style={css("min-width:0")}>
+                <span style={css("display:block;font-size:11px;text-transform:uppercase;letter-spacing:.35px;color:#0066cc;font-weight:700;margin-bottom:4px")}>{item.source}</span>
+                <strong style={css("display:block;font-size:16px;margin-bottom:4px")}>{item.title}</strong>
+                <span style={css("display:block;font-size:13px;line-height:1.4;color:#6e6e73")}>{item.detail}</span>
+              </span>
+            </button>;
+          })}
+        </div>
+        <button className="vc-press" onClick={vc.closeBackgroundSheet} style={css("width:calc(100% - 8px);height:52px;border:none;border-radius:15px;background:#0066cc;color:#fff;font-size:17px;font-weight:600;cursor:pointer;margin:16px 4px 0")}>{vc.selectedBackground.length ? `Use ${vc.selectedBackground.length} selected` : "Continue without background"}</button>
+      </section>
     </div>
   );
 }
