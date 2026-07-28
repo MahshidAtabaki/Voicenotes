@@ -1,11 +1,14 @@
+import { useState } from "react";
 import { useVC } from "@/lib/store";
-import type { CaptureKind } from "@/lib/types";
+import type { CaptureKind, CaptureSession } from "@/lib/types";
 import { css } from "../css";
 
 const REVEAL = 190;
 
 export function Capture() {
   const vc = useVC();
+  const [linkedThread, setLinkedThread] = useState<CaptureSession | null>(null);
+  const [threadPickerOpen, setThreadPickerOpen] = useState(false);
   const status = vc.status;
   const isVoice = vc.inputMode !== "text";
   const isText = vc.inputMode === "text";
@@ -24,17 +27,50 @@ export function Capture() {
         "position:absolute;inset:0;background:#0b0b0f;color:#fff;overflow:hidden;display:flex;flex-direction:column",
       )}
     >
-      {capRequesting && <RequestingPermission />}
+      {capRequesting && (
+        <RequestingPermission
+          linkedThread={linkedThread}
+          openThreadPicker={() => setThreadPickerOpen(true)}
+        />
+      )}
       {micError && <MicErrorView />}
       {procFailed && <ProcessingError />}
-      {capLive && <LiveCapture isVoice={isVoice} isText={isText} />}
+      {capLive && (
+        <LiveCapture
+          isVoice={isVoice}
+          isText={isText}
+          linkedThread={linkedThread}
+          openThreadPicker={() => setThreadPickerOpen(true)}
+        />
+      )}
       {capProcessing && <Processing kind={vc.captureKind} />}
+      {threadPickerOpen && (
+        <ThreadPicker
+          threads={vc.captures.filter((thread) => !thread.archived).slice(0, 4)}
+          selectedId={linkedThread?.id ?? null}
+          onSelect={(thread) => {
+            setLinkedThread(thread);
+            setThreadPickerOpen(false);
+          }}
+          onContinue={() => setThreadPickerOpen(false)}
+          onClear={() => {
+            setLinkedThread(null);
+            setThreadPickerOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------- requesting microphone permission ---------- */
-function RequestingPermission() {
+function RequestingPermission({
+  linkedThread,
+  openThreadPicker,
+}: {
+  linkedThread: CaptureSession | null;
+  openThreadPicker: () => void;
+}) {
   const vc = useVC();
   return (
     <div
@@ -64,11 +100,12 @@ function RequestingPermission() {
         <p style={css("font-size:15px;line-height:1.5;color:rgba(255,255,255,.82);margin:0 0 32px;max-width:280px")}>
           Allow microphone access to begin. Your recording stays private to you.
         </p>
+        <ThreadLinkButton thread={linkedThread} onClick={openThreadPicker} />
         <button
           className="vc-press"
           onClick={vc.allowMic}
           style={css(
-            "width:100%;max-width:300px;height:54px;border:none;border-radius:16px;background:#fff;color:#0b2a52;font-size:18px;font-weight:600;letter-spacing:-.2px;cursor:pointer;box-shadow:0 14px 34px -12px rgba(0,0,0,.45)",
+            "width:100%;max-width:300px;height:54px;border:none;border-radius:16px;background:#fff;color:#0b2a52;font-size:18px;font-weight:600;letter-spacing:-.2px;cursor:pointer;box-shadow:0 14px 34px -12px rgba(0,0,0,.45);margin-top:14px",
           )}
         >
           Allow microphone
@@ -179,7 +216,17 @@ function ProcessingError() {
 }
 
 /* ---------- live recording / text composer ---------- */
-function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean }) {
+function LiveCapture({
+  isVoice,
+  isText,
+  linkedThread,
+  openThreadPicker,
+}: {
+  isVoice: boolean;
+  isText: boolean;
+  linkedThread: CaptureSession | null;
+  openThreadPicker: () => void;
+}) {
   const vc = useVC();
   const paused = vc.paused;
   const revealProgress = (vc.revealDelta || 0) / REVEAL;
@@ -340,6 +387,9 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
           "position:absolute;left:0;right:0;bottom:0;z-index:7;padding:14px 16px 30px;background:linear-gradient(rgba(8,27,49,0),#081b31 34%)",
         )}
       >
+        <div style={css("display:flex;justify-content:center;margin-bottom:10px")}>
+          <ThreadLinkButton thread={linkedThread} onClick={openThreadPicker} compact />
+        </div>
         {isVoice && (
           <div style={css("display:flex;align-items:center;gap:10px")}>
             <button
@@ -432,6 +482,99 @@ function LiveCapture({ isVoice, isText }: { isVoice: boolean; isText: boolean })
 
       {/* confirmation sheet */}
       {vc.confirm != null && <ConfirmSheet />}
+    </div>
+  );
+}
+
+function ThreadLinkButton({
+  thread,
+  onClick,
+  compact = false,
+}: {
+  thread: CaptureSession | null;
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      className="vc-press"
+      onClick={onClick}
+      style={css(
+        `max-width:${compact ? "340px" : "300px"};width:100%;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);color:#fff;border-radius:14px;padding:${compact ? "9px 12px" : "11px 13px"};display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer`,
+      )}
+    >
+      <span style={css("width:30px;height:30px;flex:none;border-radius:10px;background:rgba(41,151,255,.22);display:flex;align-items:center;justify-content:center;color:#8ec8ff;font-size:20px")}>
+        ↗
+      </span>
+      <span style={css("min-width:0;flex:1")}>
+        <span style={css("display:block;font-size:12px;font-weight:600;color:rgba(255,255,255,.62);margin-bottom:2px")}>
+          {thread ? "Linked previous thread" : "Optional context"}
+        </span>
+        <span style={css("display:block;font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>
+          {thread?.title ?? "Link previous thread"}
+        </span>
+      </span>
+      <span style={css("font-size:18px;color:rgba(255,255,255,.6)")}>›</span>
+    </button>
+  );
+}
+
+function ThreadPicker({
+  threads,
+  selectedId,
+  onSelect,
+  onContinue,
+  onClear,
+}: {
+  threads: CaptureSession[];
+  selectedId: string | null;
+  onSelect: (thread: CaptureSession) => void;
+  onContinue: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Link previous thread"
+      onClick={onContinue}
+      style={css("position:absolute;inset:0;z-index:20;background:rgba(0,0,0,.52);display:flex;align-items:flex-end")}
+    >
+      <div
+        className="vc-sheet"
+        onClick={(event) => event.stopPropagation()}
+        style={css("width:100%;max-height:78%;background:#f5f5f7;border-radius:26px 26px 0 0;padding:12px 18px 28px;color:#1d1d1f;overflow-y:auto")}
+      >
+        <div style={css("width:40px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 18px")} />
+        <div style={css("display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px")}>
+          <div>
+            <h2 style={css("font-size:21px;line-height:1.2;font-weight:650;letter-spacing:-.4px;margin:0 0 5px")}>Link previous thread</h2>
+            <p style={css("font-size:14px;line-height:1.45;color:#6e6e73;margin:0")}>Add context from VoiceNotes only. Your words stay separate.</p>
+          </div>
+          <button onClick={onContinue} aria-label="Close" style={css("width:32px;height:32px;flex:none;border:none;border-radius:50%;background:#e2e2e7;color:#6e6e73;font-size:18px;cursor:pointer")}>×</button>
+        </div>
+        <div style={css("display:flex;flex-direction:column;gap:9px")}>
+          {threads.map((thread) => {
+            const selected = thread.id === selectedId;
+            return (
+              <button
+                key={thread.id}
+                className="vc-press"
+                onClick={() => onSelect(thread)}
+                style={{...css("width:100%;border:1px solid #e1e1e5;background:#fff;border-radius:16px;padding:14px;display:flex;align-items:center;gap:12px;text-align:left;cursor:pointer"), borderColor: selected ? "#0066cc" : "#e1e1e5"}}
+              >
+                <span style={css("width:36px;height:36px;flex:none;border-radius:12px;background:#eaf3fc;color:#0066cc;display:flex;align-items:center;justify-content:center")}>▤</span>
+                <span style={css("min-width:0;flex:1")}>
+                  <span style={css("display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px")}>{thread.title}</span>
+                  <span style={css("display:block;font-size:13px;color:#6e6e73;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>{thread.createdAt} · {thread.summary}</span>
+                </span>
+                <span style={{...css("width:22px;height:22px;flex:none;border-radius:50%;border:1.5px solid #c7c7cc;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px"), background: selected ? "#0066cc" : "transparent", borderColor: selected ? "#0066cc" : "#c7c7cc"}}>{selected ? "✓" : ""}</span>
+              </button>
+            );
+          })}
+        </div>
+        <button className="vc-press" onClick={selectedId ? onClear : onContinue} style={css("width:100%;height:50px;border:none;background:none;color:#0066cc;font-size:16px;font-weight:600;cursor:pointer;margin-top:8px")}>{selectedId ? "Remove link" : "Continue without linking"}</button>
+      </div>
     </div>
   );
 }
