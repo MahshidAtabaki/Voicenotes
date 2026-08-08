@@ -1,4 +1,5 @@
 import type { CaptureSession } from "./types";
+import { capturePersistence } from "./capture-persistence";
 
 export class CaptureNotFoundError extends Error {
   constructor() {
@@ -70,4 +71,26 @@ export function deletionStateAfterSuccess(
     captures: captures.filter((capture) => capture.id !== captureId),
     closePlayer: playingCaptureId === captureId,
   };
+}
+
+export interface CapturePersistenceDeletionDependencies {
+  deleteRemote: (captureId: string) => Promise<void>;
+  deleteLocalMetadata: (captureId: string) => Promise<void> | void;
+  deleteLocalAudio: (captureId: string) => Promise<void>;
+}
+
+/** Routes persistence deletion without mutating React state. */
+export async function deleteCaptureFromPersistence(
+  capture: CaptureSession,
+  dependencies: CapturePersistenceDeletionDependencies,
+): Promise<void> {
+  const source = capturePersistence(capture);
+  if (source === "remote") {
+    await dependencies.deleteRemote(capture.id);
+    return;
+  }
+  if (capture.kind === "voice") {
+    await dependencies.deleteLocalAudio(capture.id);
+  }
+  await dependencies.deleteLocalMetadata(capture.id);
 }

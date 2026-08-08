@@ -128,6 +128,8 @@ export interface CaptureSession {
   archived: boolean;
   createdAt: string;
   items: ThoughtItem[];
+  /** Application metadata; omitted by older local records and database rows. */
+  persistenceSource?: "local" | "remote";
 }
 
 /* ---------- Create payloads (client → server) ---------- */

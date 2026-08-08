@@ -12,6 +12,7 @@ import {
   permanentlyDeleteOwnedCapture,
   type CaptureDeletionAdapter,
 } from "../capture-deletion";
+import { asRemoteCapture } from "../capture-persistence";
 
 /* Server-side data access. Every query runs under the user's session, so RLS
    guarantees users only ever read or write their own rows. */
@@ -70,7 +71,7 @@ function mapItem(row: ItemRow, tags: TagRow[]): ThoughtItem {
 }
 
 function mapSession(row: SessionRow, items: ThoughtItem[]): CaptureSession {
-  return {
+  return asRemoteCapture({
     id: row.id,
     kind: row.kind,
     title: row.title,
@@ -83,7 +84,7 @@ function mapSession(row: SessionRow, items: ThoughtItem[]): CaptureSession {
     archived: row.archived,
     createdAt: friendlyDate(row.created_at),
     items: items.sort((a, b) => a.order - b.order),
-  };
+  });
 }
 
 export async function getUserId(): Promise<string | null> {

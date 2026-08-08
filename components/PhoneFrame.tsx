@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { css } from "./css";
+import { PHONE_OVERLAY_Z_INDEX } from "@/lib/delete-confirmation";
 
 /** iPhone device chrome + status bar. Preserved from the design frame. */
 export function PhoneFrame({
@@ -57,6 +58,15 @@ export function PhoneFrame({
             </span>
           </div>
           {children}
+          <div
+            data-phone-overlay-host="1"
+            style={{
+              ...css(
+                "position:absolute;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none",
+              ),
+              zIndex: PHONE_OVERLAY_Z_INDEX,
+            }}
+          />
         </div>
       </div>
     </div>

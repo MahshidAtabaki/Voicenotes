@@ -12,7 +12,13 @@ export function readPreviewCaptures(storage: PreviewStorage): CaptureSession[] |
     const raw = storage.getItem(PREVIEW_STORAGE_KEY);
     if (!raw) return null;
     const value: unknown = JSON.parse(raw);
-    return Array.isArray(value) ? (value as CaptureSession[]) : null;
+    return Array.isArray(value)
+      ? (value as CaptureSession[]).map((capture) =>
+          capture.persistenceSource
+            ? capture
+            : { ...capture, persistenceSource: "local" },
+        )
+      : null;
   } catch {
     return null;
   }

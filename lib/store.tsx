@@ -32,8 +32,16 @@ import { speak, stopSpeaking } from "./tts";
 import { demoTranscriptWords, seedReviewItems } from "./seed";
 import { seedCaptures } from "./seed";
 import { readPreviewCaptures, writePreviewCaptures } from "./local-preview";
-import { getLocalAudio, saveLocalAudio } from "./local-audio";
-import { deletionStateAfterSuccess } from "./capture-deletion";
+import { deleteLocalAudio, getLocalAudio, saveLocalAudio } from "./local-audio";
+import {
+  deleteCaptureFromPersistence,
+  deletionStateAfterSuccess,
+} from "./capture-deletion";
+import {
+  asLocalCapture,
+  capturePersistence,
+  deleteLocalCaptureMetadata,
+} from "./capture-persistence";
 import type {
   AppStatus,
   BackgroundContext,
@@ -1065,7 +1073,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-    const localSession: CaptureSession = {
+    const localSession: CaptureSession = asLocalCapture({
       id: localId,
       kind: st.captureKind,
       title,
@@ -1091,7 +1099,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         topics: it.topics,
         shared: st.reviewShare,
       })),
-    };
+    });
     if (saveRemotely) {
       const input: CreateCaptureInput = {
         kind: st.captureKind,
@@ -1349,8 +1357,17 @@ export function VCProvider({ children }: { children: ReactNode }) {
     const id = capture.id;
     patch({ deletingCapture: true, deleteCaptureError: false });
     try {
-      if (!supabaseEnabled || !(await hasSession())) throw new Error("remote_session_required");
-      await apiDeleteCapture(id);
+      await deleteCaptureFromPersistence(capture, {
+        deleteRemote: apiDeleteCapture,
+        deleteLocalAudio,
+        deleteLocalMetadata: (captureId) => {
+          deleteLocalCaptureMetadata(
+            localStorage,
+            stateRef.current.captures,
+            captureId,
+          );
+        },
+      });
       const result = deletionStateAfterSuccess(
         stateRef.current.captures,
         id,
@@ -1367,7 +1384,18 @@ export function VCProvider({ children }: { children: ReactNode }) {
       });
       showToast("Capture deleted");
     } catch (error) {
-      console.error("Capture deletion request failed", error);
+      let persistenceSource: string;
+      try {
+        persistenceSource = capturePersistence(capture);
+      } catch {
+        persistenceSource = "unknown";
+      }
+      console.error("Capture deletion request failed", {
+        captureId: id,
+        persistenceSource,
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        errorMessage: error instanceof Error ? error.message : "unknown_error",
+      });
       patch({ deletingCapture: false, deleteCaptureError: true });
     }
   });

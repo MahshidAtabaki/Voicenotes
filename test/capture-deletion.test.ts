@@ -3,16 +3,32 @@ import { test } from "node:test";
 import {
   CaptureNotFoundError,
   deletionStateAfterSuccess,
+  deleteCaptureFromPersistence,
   isMissingStorageObject,
   permanentlyDeleteOwnedCapture,
   type CaptureDeletionAdapter,
   type OwnedCaptureForDeletion,
 } from "../lib/capture-deletion.ts";
+import {
+  asLocalCapture,
+  asRemoteCapture,
+  capturePersistence,
+  deleteLocalCaptureMetadata,
+} from "../lib/capture-persistence.ts";
+import {
+  readPreviewCaptures,
+  type PreviewStorage,
+} from "../lib/local-preview.ts";
+import { seedCaptures } from "../lib/seed.ts";
+import { readFileSync } from "node:fs";
 import type { CaptureSession } from "../lib/types.ts";
 import {
   DELETE_ACTION_LABEL,
   DELETE_CONFIRMATION_Z_INDEX,
+  findPhoneOverlayHost,
   GLOBAL_PLAYER_Z_INDEX,
+  PHONE_OVERLAY_SELECTOR,
+  PHONE_OVERLAY_Z_INDEX,
 } from "../lib/delete-confirmation.ts";
 
 function fixture(kind: "voice" | "text" = "voice"): CaptureSession {
@@ -72,6 +88,98 @@ test("voice deletion removes Storage audio and cascades organised items and tags
   assert.deepEqual(rows.items, []);
   assert.deepEqual(rows.tags, []);
   assert.equal(rows.audio.size, 0);
+});
+
+class MemoryPreviewStorage implements PreviewStorage {
+  value: string | null = null;
+  failWrites = false;
+  getItem() { return this.value; }
+  setItem(_key: string, value: string) {
+    if (this.failWrites) throw new Error("blocked");
+    this.value = value;
+  }
+}
+
+test("capture persistence is explicit for mapped remote, new local, and seed captures", () => {
+  assert.equal(capturePersistence(asRemoteCapture(fixture())), "remote");
+  assert.equal(capturePersistence(asLocalCapture(fixture("text"))), "local");
+  assert.ok(seedCaptures().every((capture) => capturePersistence(capture) === "local"));
+  assert.equal(capturePersistence({ ...fixture(), audioPath: "local:capture-1" }), "local");
+  assert.throws(
+    () => capturePersistence({ ...fixture("text"), persistenceSource: undefined }),
+    /capture_persistence_unknown/,
+  );
+});
+
+test("local voice deletion removes audio and metadata without calling remote", async () => {
+  const local = asLocalCapture({ ...fixture("voice"), audioPath: "local:capture-1" });
+  const remote = asRemoteCapture({ ...fixture("text"), id: "remote-1" });
+  const storage = new MemoryPreviewStorage();
+  storage.value = JSON.stringify([local]);
+  let remoteCalls = 0;
+  let audioCalls = 0;
+  await deleteCaptureFromPersistence(local, {
+    deleteRemote: async () => { remoteCalls += 1; },
+    deleteLocalAudio: async () => { audioCalls += 1; },
+    deleteLocalMetadata: (id) => {
+      deleteLocalCaptureMetadata(storage, [local, remote], id);
+    },
+  });
+  assert.equal(remoteCalls, 0);
+  assert.equal(audioCalls, 1);
+  assert.deepEqual(readPreviewCaptures(storage), []);
+  assert.equal(storage.value?.includes("remote-1"), false);
+});
+
+test("missing local voice audio does not block metadata deletion", async () => {
+  const local = asLocalCapture({ ...fixture("voice"), audioPath: "local:capture-1" });
+  const storage = new MemoryPreviewStorage();
+  storage.value = JSON.stringify([local]);
+  await deleteCaptureFromPersistence(local, {
+    deleteRemote: async () => assert.fail("remote deletion must not run"),
+    deleteLocalAudio: async () => {},
+    deleteLocalMetadata: (id) => { deleteLocalCaptureMetadata(storage, [local], id); },
+  });
+  assert.deepEqual(readPreviewCaptures(storage), []);
+});
+
+test("local text deletion skips audio and removes persisted metadata", async () => {
+  const local = asLocalCapture(fixture("text"));
+  const storage = new MemoryPreviewStorage();
+  storage.value = JSON.stringify([local]);
+  let audioCalls = 0;
+  await deleteCaptureFromPersistence(local, {
+    deleteRemote: async () => assert.fail("remote deletion must not run"),
+    deleteLocalAudio: async () => { audioCalls += 1; },
+    deleteLocalMetadata: (id) => { deleteLocalCaptureMetadata(storage, [local], id); },
+  });
+  assert.equal(audioCalls, 0);
+  assert.deepEqual(readPreviewCaptures(storage), []);
+});
+
+test("failed local metadata persistence rejects without changing application captures", async () => {
+  const local = asLocalCapture(fixture("text"));
+  const captures = [local];
+  const storage = new MemoryPreviewStorage();
+  storage.value = JSON.stringify(captures);
+  storage.failWrites = true;
+  await assert.rejects(() => deleteCaptureFromPersistence(local, {
+    deleteRemote: async () => assert.fail("remote deletion must not run"),
+    deleteLocalAudio: async () => {},
+    deleteLocalMetadata: (id) => { deleteLocalCaptureMetadata(storage, captures, id); },
+  }), /local_capture_metadata_delete_failed/);
+  assert.deepEqual(captures, [local]);
+});
+
+test("remote persistence routes only to the existing server deletion dependency", async () => {
+  const remote = asRemoteCapture(fixture());
+  const calls: string[] = [];
+  await deleteCaptureFromPersistence(remote, {
+    deleteRemote: async (id) => { calls.push(id); },
+    deleteLocalAudio: async () => assert.fail("local audio deletion must not run"),
+    deleteLocalMetadata: () => assert.fail("local metadata deletion must not run"),
+  });
+  assert.deepEqual(calls, [remote.id]);
 });
 
 test("signed anonymous-session owner can delete its persisted capture ID", async () => {
@@ -134,8 +242,35 @@ test("successful deletion identifies and removes the currently playing capture",
   assert.deepEqual(result.captures.map((item) => item.id), ["capture-2"]);
 });
 
+test("deleting another capture preserves unrelated player state", () => {
+  const result = deletionStateAfterSuccess([fixture()], "capture-1", "capture-2");
+  assert.equal(result.closePlayer, false);
+});
+
 test("portalled confirmation layering clears the visible global player", () => {
   assert.ok(DELETE_CONFIRMATION_Z_INDEX > GLOBAL_PLAYER_Z_INDEX);
+  assert.equal(DELETE_CONFIRMATION_Z_INDEX, PHONE_OVERLAY_Z_INDEX);
+});
+
+test("modal targets the clipped in-phone overlay and never the document body", () => {
+  let queried = "";
+  const host = {} as Element;
+  const result = findPhoneOverlayHost({
+    querySelector(selector: string) {
+      queried = selector;
+      return host;
+    },
+  });
+  assert.equal(queried, PHONE_OVERLAY_SELECTOR);
+  assert.equal(result, host);
+
+  const detailSource = readFileSync("components/screens/Detail.tsx", "utf8");
+  const frameSource = readFileSync("components/PhoneFrame.tsx", "utf8");
+  assert.doesNotMatch(detailSource, /document\.body/);
+  assert.match(detailSource, /position:absolute;inset:0/);
+  assert.doesNotMatch(detailSource, /position:fixed/);
+  assert.match(frameSource, /data-phone-overlay-host="1"/);
+  assert.match(frameSource, /overflow:hidden;border-radius:inherit;pointer-events:none/);
 });
 
 test("failed deletion keeps the destructive action labelled Delete", () => {

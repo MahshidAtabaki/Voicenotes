@@ -143,6 +143,15 @@ When there is no valid Supabase browser session:
 Local mode is not cross-device storage and is not a therapist-sharing backend.
 Do not describe local persistence as cloud backup.
 
+Every capture in application state carries a normalised `persistenceSource` of
+`local` or `remote`. Supabase-mapped captures are remote; new local captures,
+demo seeds, and legacy preview records are local. Deletion routes on that field:
+remote captures use the authenticated server endpoint, while local captures
+remove IndexedDB audio when applicable and then persist only the remaining local
+captures to `voicenotes.previewCaptures`. Remote captures are never written into
+that local metadata store. React state changes only after the selected
+persistence layer confirms deletion.
+
 ## Therapist connection
 
 `components/screens/Therapist.tsx` is a read-only demonstration, not a complete

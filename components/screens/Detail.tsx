@@ -1,9 +1,8 @@
-import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useVC } from "@/lib/store";
 import {
   DELETE_ACTION_LABEL,
-  DELETE_CONFIRMATION_Z_INDEX,
+  findPhoneOverlayHost,
 } from "@/lib/delete-confirmation";
 import type { ThoughtItem } from "@/lib/types";
 import { css } from "../css";
@@ -105,25 +104,16 @@ export function Detail() {
 
 function DeleteCaptureSheet() {
   const vc = useVC();
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, []);
-
   if (typeof document === "undefined") return null;
+  const overlayHost = findPhoneOverlayHost(document);
+  if (!overlayHost) return null;
   return createPortal(
     <div
       role="presentation"
       onClick={vc.cancelDeleteCapture}
-      style={{
-        ...css(
-          "position:fixed;inset:0;background:rgba(0,0,0,.38);display:flex;align-items:flex-end;justify-content:center;pointer-events:auto",
-        ),
-        zIndex: DELETE_CONFIRMATION_Z_INDEX,
-      }}
+      style={css(
+        "position:absolute;inset:0;background:rgba(0,0,0,.38);display:flex;align-items:flex-end;pointer-events:auto",
+      )}
     >
       <section
         role="alertdialog"
@@ -172,7 +162,7 @@ function DeleteCaptureSheet() {
         </div>
       </section>
     </div>,
-    document.body,
+    overlayHost,
   );
 }
 
