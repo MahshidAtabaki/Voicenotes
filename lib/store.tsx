@@ -1329,6 +1329,10 @@ export function VCProvider({ children }: { children: ReactNode }) {
     deleteCaptureError: false,
   }));
   const requestDeleteCapture = useCallbackSafe(() => {
+    // Opening a destructive modal must quiet playback. Cancellation deliberately
+    // does not resume it.
+    if (playbackEl.current && !playbackEl.current.paused) playbackEl.current.pause();
+    patch({ playerPlaying: false });
     patch({ deleteConfirmOpen: true, deleteCaptureError: false });
   });
   const cancelDeleteCapture = useCallbackSafe(() => {
@@ -1338,8 +1342,11 @@ export function VCProvider({ children }: { children: ReactNode }) {
   });
   const confirmDeleteCapture = useCallbackSafe(async () => {
     if (stateRef.current.deletingCapture) return;
-    const id = stateRef.current.detailId;
-    if (!id) return;
+    const detailId = stateRef.current.detailId;
+    const capture = stateRef.current.captures.find((item) => item.id === detailId);
+    if (!capture) return;
+    // Use the ID returned by persistence rather than any presentation metadata.
+    const id = capture.id;
     patch({ deletingCapture: true, deleteCaptureError: false });
     try {
       if (!supabaseEnabled || !(await hasSession())) throw new Error("remote_session_required");

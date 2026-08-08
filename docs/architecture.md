@@ -123,7 +123,10 @@ Permanent deletion is performed by the authenticated server route. The route
 first verifies that the capture belongs to the current Supabase user, explicitly
 removes any audio object from the private `voice-captures` bucket, and only then
 deletes the owned `capture_sessions` row after requiring the database to return
-the deleted ID. Existing foreign keys cascade that deletion through
+the deleted ID. Storage deletion uses the same server-side, cookie-bound user
+session and the bucket's owner-only delete policy; it does not require or expose
+a service-role key. An already-missing audio object is treated as deleted.
+Existing foreign keys cascade the database deletion through
 `thought_items` and `thought_tags`. Text captures follow the same database path
 without a Storage operation. A failed or unconfirmed operation remains retryable
 and must not be reflected as a successful client-side deletion.

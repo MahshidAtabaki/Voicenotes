@@ -3,11 +3,17 @@ import { test } from "node:test";
 import {
   CaptureNotFoundError,
   deletionStateAfterSuccess,
+  isMissingStorageObject,
   permanentlyDeleteOwnedCapture,
   type CaptureDeletionAdapter,
   type OwnedCaptureForDeletion,
 } from "../lib/capture-deletion.ts";
 import type { CaptureSession } from "../lib/types.ts";
+import {
+  DELETE_ACTION_LABEL,
+  DELETE_CONFIRMATION_Z_INDEX,
+  GLOBAL_PLAYER_Z_INDEX,
+} from "../lib/delete-confirmation.ts";
 
 function fixture(kind: "voice" | "text" = "voice"): CaptureSession {
   return {
@@ -32,11 +38,14 @@ function fixture(kind: "voice" | "text" = "voice"): CaptureSession {
 }
 
 function memoryAdapter(capture: CaptureSession, owner = "user-1") {
+  const audioPath = capture.audioPath
+    ? `${owner}/${capture.audioPath.split("/").at(-1)}`
+    : null;
   const rows = {
-    capture: { id: capture.id, userId: owner, audioPath: capture.audioPath } as OwnedCaptureForDeletion | null,
+    capture: { id: capture.id, userId: owner, audioPath } as OwnedCaptureForDeletion | null,
     items: [...capture.items],
     tags: capture.items.flatMap((item) => [...item.emotions, ...item.topics]),
-    audio: new Set(capture.audioPath ? [capture.audioPath] : []),
+    audio: new Set(audioPath ? [audioPath] : []),
   };
   const adapter: CaptureDeletionAdapter = {
     async findOwnedCapture(id, userId) {
@@ -65,6 +74,12 @@ test("voice deletion removes Storage audio and cascades organised items and tags
   assert.equal(rows.audio.size, 0);
 });
 
+test("signed anonymous-session owner can delete its persisted capture ID", async () => {
+  const { adapter, rows } = memoryAdapter(fixture("voice"), "anonymous-user-uuid");
+  await permanentlyDeleteOwnedCapture("capture-1", "anonymous-user-uuid", adapter);
+  assert.equal(rows.capture, null);
+});
+
 test("text-only deletion succeeds without attempting Storage deletion", async () => {
   const { adapter, rows } = memoryAdapter(fixture("text"));
   let storageCalls = 0;
@@ -82,6 +97,18 @@ test("a different owner cannot delete a capture", async () => {
   );
   assert.notEqual(rows.capture, null);
   assert.equal(rows.audio.size, 1);
+});
+
+test("missing Storage audio does not block database cascades", async () => {
+  const { adapter, rows } = memoryAdapter(fixture("voice"));
+  adapter.removeAudio = async () => {
+    throw { statusCode: 404, code: "not_found" };
+  };
+  await permanentlyDeleteOwnedCapture("capture-1", "user-1", adapter);
+  assert.equal(rows.capture, null);
+  assert.deepEqual(rows.items, []);
+  assert.deepEqual(rows.tags, []);
+  assert.equal(isMissingStorageObject({ status: 404 }), true);
 });
 
 test("failed database deletion retains UI data and can be retried", async () => {
@@ -105,4 +132,13 @@ test("successful deletion identifies and removes the currently playing capture",
   const result = deletionStateAfterSuccess([capture, { ...capture, id: "capture-2" }], capture.id, capture.id);
   assert.equal(result.closePlayer, true);
   assert.deepEqual(result.captures.map((item) => item.id), ["capture-2"]);
+});
+
+test("portalled confirmation layering clears the visible global player", () => {
+  assert.ok(DELETE_CONFIRMATION_Z_INDEX > GLOBAL_PLAYER_Z_INDEX);
+});
+
+test("failed deletion keeps the destructive action labelled Delete", () => {
+  assert.equal(DELETE_ACTION_LABEL, "Delete");
+  assert.notEqual(DELETE_ACTION_LABEL, "Retry delete");
 });

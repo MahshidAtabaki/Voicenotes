@@ -1,4 +1,10 @@
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useVC } from "@/lib/store";
+import {
+  DELETE_ACTION_LABEL,
+  DELETE_CONFIRMATION_Z_INDEX,
+} from "@/lib/delete-confirmation";
 import type { ThoughtItem } from "@/lib/types";
 import { css } from "../css";
 import { fmtDur } from "./shared";
@@ -99,13 +105,25 @@ export function Detail() {
 
 function DeleteCaptureSheet() {
   const vc = useVC();
-  return (
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       role="presentation"
       onClick={vc.cancelDeleteCapture}
-      style={css(
-        "position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.38);display:flex;align-items:flex-end",
-      )}
+      style={{
+        ...css(
+          "position:fixed;inset:0;background:rgba(0,0,0,.38);display:flex;align-items:flex-end;justify-content:center;pointer-events:auto",
+        ),
+        zIndex: DELETE_CONFIRMATION_Z_INDEX,
+      }}
     >
       <section
         role="alertdialog"
@@ -115,7 +133,7 @@ function DeleteCaptureSheet() {
         onClick={(event) => event.stopPropagation()}
         className="vc-sheet"
         style={css(
-          "width:100%;background:#f5f5f7;border-radius:26px 26px 0 0;padding:10px 18px 30px;color:#1d1d1f;text-align:center",
+          "width:100%;max-width:430px;background:#f5f5f7;border-radius:26px 26px 0 0;padding:10px 18px 30px;color:#1d1d1f;text-align:center",
         )}
       >
         <div style={css("width:40px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 20px")} />
@@ -149,11 +167,12 @@ function DeleteCaptureSheet() {
             }}
           >
             {vc.deletingCapture && <span aria-hidden="true" style={css("width:15px;height:15px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:vcSpin .7s linear infinite")} />}
-            {vc.deleteCaptureError ? "Retry delete" : "Delete"}
+            {DELETE_ACTION_LABEL}
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

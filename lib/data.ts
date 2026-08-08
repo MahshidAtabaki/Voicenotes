@@ -89,7 +89,7 @@ export async function apiDeleteCapture(id: string): Promise<void> {
   const res = await fetch(`/api/captures/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: "delete_failed" })) as { error?: string };
-    throw new Error(body.error ?? "delete_failed");
+    throw new Error(`${body.error ?? "delete_failed"} (${res.status})`);
   }
 }
 

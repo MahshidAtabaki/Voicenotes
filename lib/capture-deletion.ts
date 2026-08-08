@@ -19,6 +19,17 @@ export interface CaptureDeletionAdapter {
   deleteDatabaseCapture: (captureId: string, userId: string) => Promise<boolean>;
 }
 
+export function isMissingStorageObject(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const value = error as { status?: number; statusCode?: number | string; code?: string };
+  return (
+    value.status === 404 ||
+    String(value.statusCode) === "404" ||
+    value.code === "not_found" ||
+    value.code === "NoSuchKey"
+  );
+}
+
 /**
  * Permanently deletes an owned capture. Database foreign keys cascade through
  * organised items and tags; Storage must be removed explicitly first.
@@ -32,12 +43,18 @@ export async function permanentlyDeleteOwnedCapture(
   if (!capture) throw new CaptureNotFoundError();
 
   if (capture.audioPath) {
-    // The admin Storage client bypasses RLS, so enforce the ownership namespace
-    // before it is ever allowed to remove an object.
+    // Enforce the ownership namespace in application code as well as through
+    // the bucket's RLS policy before removing an object.
     if (!capture.audioPath.startsWith(`${userId}/`)) {
       throw new Error("Capture audio path is outside the owner's namespace");
     }
-    await adapter.removeAudio(capture.audioPath);
+    try {
+      await adapter.removeAudio(capture.audioPath);
+    } catch (error) {
+      // A previously removed object is already in the desired state and must
+      // not prevent the owned database records from being deleted.
+      if (!isMissingStorageObject(error)) throw error;
+    }
   }
 
   const deleted = await adapter.deleteDatabaseCapture(captureId, userId);

@@ -7,7 +7,7 @@ import type {
   CreateCaptureInput,
   ThoughtItem,
 } from "../types";
-import { createSupabaseAdmin, createSupabaseServer } from "./server";
+import { createSupabaseServer } from "./server";
 import {
   permanentlyDeleteOwnedCapture,
   type CaptureDeletionAdapter,
@@ -264,8 +264,10 @@ export async function deleteCapture(id: string, userId: string): Promise<void> {
       return { id: row.id, userId: row.user_id, audioPath: row.audio_path };
     },
     async removeAudio(audioPath) {
-      const admin = createSupabaseAdmin();
-      const { error } = await admin.storage.from("voice-captures").remove([audioPath]);
+      // Use the same authenticated anonymous-user session. The bucket's DELETE
+      // policy permits only objects inside this user's folder, and ownership was
+      // explicitly verified above. No service-role secret is needed here.
+      const { error } = await supabase.storage.from("voice-captures").remove([audioPath]);
       if (error) throw error;
     },
     async deleteDatabaseCapture(captureId, ownerId) {
