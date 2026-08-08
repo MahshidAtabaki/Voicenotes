@@ -1,4 +1,5 @@
 import type { CaptureSession, ReviewItem } from "./types";
+import { asLocalCapture } from "./capture-persistence";
 
 /* Seed data ported verbatim from the design prototype so the UI renders
    faithfully before a Supabase session exists (unauthenticated / demo). */
@@ -57,7 +58,7 @@ export function seedReviewItems(): ReviewItem[] {
 }
 
 export function seedCaptures(): CaptureSession[] {
-  return [
+  const captures: CaptureSession[] = [
     {
       id: "c_investor",
       kind: "voice",
@@ -123,6 +124,7 @@ export function seedCaptures(): CaptureSession[] {
       ],
     },
   ];
+  return captures.map(asLocalCapture);
 }
 
 /** Demo transcript words, revealed progressively while recording (design parity). */

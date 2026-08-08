@@ -16,6 +16,26 @@ test("local preview safely round-trips existing captures", () => {
   assert.deepEqual(readPreviewCaptures(storage), captures);
 });
 
+test("legacy local voice and text captures normalize to local persistence", () => {
+  const storage = new MemoryStorage();
+  const [voice, textSeed] = seedCaptures();
+  const text = {
+    ...textSeed,
+    id: "legacy-text",
+    kind: "text" as const,
+    audioPath: null,
+    transcript: null,
+    originalText: "legacy exact words",
+  };
+  const legacy = [voice, text].map((capture) => ({
+    ...capture,
+    persistenceSource: undefined,
+  }));
+  storage.value = JSON.stringify(legacy);
+  const restored = readPreviewCaptures(storage);
+  assert.deepEqual(restored?.map((capture) => capture.persistenceSource), ["local", "local"]);
+});
+
 test("local preview safely ignores missing, malformed, and blocked storage", () => {
   const storage = new MemoryStorage();
   assert.equal(readPreviewCaptures(storage), null);

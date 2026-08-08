@@ -84,6 +84,16 @@ export function Review() {
       </div>
 
       <div style={css("padding:12px 16px 0")}>
+        {vc.selectedBackground.length > 0 && (
+          <section aria-labelledby="selected-background-title" style={css("background:#eef4fd;border-radius:18px;padding:14px 16px;margin:0 4px 12px")}>
+            <div id="selected-background-title" style={css("font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:#0066cc;margin-bottom:4px")}>Selected background</div>
+            <p style={css("font-size:12px;color:#6e6e73;margin:0 0 10px")}>Context you chose — separate from what you said or wrote.</p>
+            {vc.selectedBackground.map((item) => <div key={item.id} style={css("display:flex;align-items:center;gap:9px;background:#fff;border-radius:12px;padding:10px 11px;margin-top:7px")}>
+              <div style={css("flex:1;min-width:0")}><strong style={css("display:block;font-size:13px")}>{item.title}</strong><span style={css("font-size:11px;color:#0066cc")}>{item.source}</span></div>
+              <button aria-label={`Remove ${item.title}`} onClick={() => vc.removeBackground(item.id)} style={css("border:none;background:none;color:#6e6e73;font-size:13px;cursor:pointer")}>Remove</button>
+            </div>)}
+          </section>
+        )}
         {items.length > 1 && (
           <div
             role="tablist"

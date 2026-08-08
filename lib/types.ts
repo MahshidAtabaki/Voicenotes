@@ -43,6 +43,14 @@ export type Screen =
 
 export type InputMode = "voice" | "text";
 
+/** User-selected external context. Always kept separate from their own words. */
+export interface BackgroundContext {
+  id: string;
+  source: "Calendar event" | "Personal note" | "Work note" | "Support-session note";
+  title: string;
+  detail: string;
+}
+
 /* ---------- AI contract (the invariant) ----------
    For every generated topic, OpenAI must return exactly these fields.
    `sourceText` must exactly match part of the original input at the
@@ -120,6 +128,8 @@ export interface CaptureSession {
   archived: boolean;
   createdAt: string;
   items: ThoughtItem[];
+  /** Application metadata; omitted by older local records and database rows. */
+  persistenceSource?: "local" | "remote";
 }
 
 /* ---------- Create payloads (client → server) ---------- */

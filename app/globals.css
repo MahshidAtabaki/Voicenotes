@@ -153,6 +153,11 @@ textarea {
     transform: scaleY(1);
   }
 }
+@keyframes vcSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 @keyframes vcMorph {
   from {
     transform: scale(1);
