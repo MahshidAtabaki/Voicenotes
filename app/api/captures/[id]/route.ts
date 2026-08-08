@@ -73,7 +73,11 @@ export async function DELETE(_req: Request, { params }: Ctx) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     await deleteCapture(id);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    console.error("Capture DELETE failed", {
+      captureId: id,
+      reason: error instanceof Error ? error.message : "unknown_error",
+    });
     return NextResponse.json({ error: "delete_failed" }, { status: 500 });
   }
 }

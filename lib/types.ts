@@ -106,6 +106,8 @@ export interface ThoughtItem {
 
 export interface CaptureSession {
   id: string;
+  /** Persistence owner. Local and remote captures may coexist in one library. */
+  persistenceSource?: "local" | "remote";
   kind: CaptureKind;
   title: string;
   summary: string;

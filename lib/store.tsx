@@ -31,8 +31,9 @@ import { topicsToReviewItems } from "./organize";
 import { speak, stopSpeaking } from "./tts";
 import { demoTranscriptWords, seedReviewItems } from "./seed";
 import { seedCaptures } from "./seed";
-import { readPreviewCaptures, writePreviewCaptures } from "./local-preview";
+import { deletePreviewCapture, readPreviewCaptures, writePreviewCaptures } from "./local-preview";
 import { deleteLocalAudio, getLocalAudio, saveLocalAudio } from "./local-audio";
+import { deletedCaptureWasPlaying, deleteCaptureFromPersistence } from "./capture-deletion";
 import type {
   AppStatus,
   CaptureKind,
@@ -117,6 +118,10 @@ interface State {
   playerCurrent: number;
   playerDuration: number;
   playerTitle: string;
+  playerCaptureId: string | null;
+  deleteConfirmationOpen: boolean;
+  deleteInProgress: boolean;
+  deleteError: string | null;
 }
 
 const initialState: State = {
@@ -154,6 +159,10 @@ const initialState: State = {
   playerCurrent: 0,
   playerDuration: 0,
   playerTitle: "Recording",
+  playerCaptureId: null,
+  deleteConfirmationOpen: false,
+  deleteInProgress: false,
+  deleteError: null,
 };
 
 export interface VCStore extends State {
@@ -217,6 +226,8 @@ export interface VCStore extends State {
   // detail
   backFromDetail: () => void;
   deleteCapture: () => void;
+  cancelDeleteCapture: () => void;
+  confirmDeleteCapture: () => void;
   archiveCapture: () => void;
   toggleItemShare: (id: string) => void;
   updateSavedField: (field: "title" | "summary", value: string) => void;
@@ -1032,6 +1043,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     }
     const localSession: CaptureSession = {
       id: localId,
+      persistenceSource: "local",
       kind: st.captureKind,
       title,
       summary,
@@ -1120,7 +1132,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     showToast("Full transcript preserved unchanged"),
   );
 
-  const playUrl = useCallbackSafe((url: string, title: string, objectUrl = false) => {
+  const playUrl = useCallbackSafe((url: string, title: string, objectUrl = false, captureId: string | null = null) => {
     try {
       if (playbackEl.current) playbackEl.current.pause();
       if (playbackObjectUrl.current) URL.revokeObjectURL(playbackObjectUrl.current);
@@ -1150,6 +1162,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
         playerCurrent: 0,
         playerDuration: 0,
         playerTitle: title,
+        playerCaptureId: captureId,
       });
       void el.play().catch(() => {
         patch({ playerPlaying: false });
@@ -1189,6 +1202,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
       playerPlaying: false,
       playerCurrent: 0,
       playerDuration: 0,
+      playerCaptureId: null,
     });
   });
 
@@ -1211,7 +1225,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (id && capture?.audioPath?.startsWith("local:")) {
       const blob = await getLocalAudio(id).catch(() => null);
       if (blob) {
-        playUrl(URL.createObjectURL(blob), capture.title, true);
+        playUrl(URL.createObjectURL(blob), capture.title, true, id);
         return;
       }
       showToast("Recording is unavailable on this device");
@@ -1220,7 +1234,7 @@ export function VCProvider({ children }: { children: ReactNode }) {
     if (supabaseEnabled && id) {
       const url = await getAudioUrl(id);
       if (url) {
-        playUrl(url, capture?.title ?? "Recording");
+        playUrl(url, capture?.title ?? "Recording", false, id);
         return;
       }
     }
@@ -1281,16 +1295,48 @@ export function VCProvider({ children }: { children: ReactNode }) {
     patch({ screen: "detail", detailId: id }),
   );
   const backFromDetail = useCallbackSafe(() => patch({ screen: "library" }));
-  const deleteCapture = useCallbackSafe(async () => {
+  const deleteCapture = useCallbackSafe(() => {
+    if (!stateRef.current.detailId) return;
+    patch({ deleteConfirmationOpen: true, deleteError: null });
+  });
+  const cancelDeleteCapture = useCallbackSafe(() => {
+    if (stateRef.current.deleteInProgress) return;
+    patch({ deleteConfirmationOpen: false, deleteError: null });
+  });
+  const confirmDeleteCapture = useCallbackSafe(async () => {
     const id = stateRef.current.detailId;
-    if (!id) return;
+    const capture = stateRef.current.captures.find((item) => item.id === id);
+    if (!id || !capture || stateRef.current.deleteInProgress) return;
+    patch({ deleteInProgress: true, deleteError: null });
     try {
-      if (supabaseEnabled) await apiDeleteCapture(id);
-      else await deleteLocalAudio(id).catch(() => {});
-      patch((prev) => ({ screen: "library", captures: prev.captures.filter((c) => c.id !== id) }));
+      await deleteCaptureFromPersistence(capture, {
+        deleteRemote: apiDeleteCapture,
+        deleteLocalAudio,
+        deleteLocalRecord: async (captureId) => {
+          deletePreviewCapture(localStorage, captureId);
+        },
+      });
+      if (deletedCaptureWasPlaying(id, stateRef.current.playerCaptureId)) closePlayback();
+      patch((prev) => ({
+        screen: "library",
+        detailId: null,
+        captures: prev.captures.filter((item) => item.id !== id),
+        deleteConfirmationOpen: false,
+        deleteInProgress: false,
+        deleteError: null,
+      }));
       showToast("Capture deleted");
+    } catch (error) {
+      console.error("Capture deletion failed", {
+        captureId: id,
+        persistenceSource: capture.persistenceSource ?? "unknown",
+        reason: error instanceof Error ? error.message : "unknown_error",
+      });
+      patch({
+        deleteInProgress: false,
+        deleteError: "Couldn’t delete this capture. Please try again.",
+      });
     }
-    catch { showToast("Delete failed — nothing was removed"); }
   });
   const archiveCapture = useCallbackSafe(async () => {
     const id = stateRef.current.detailId;
@@ -1417,6 +1463,8 @@ export function VCProvider({ children }: { children: ReactNode }) {
     openDetail,
     backFromDetail,
     deleteCapture,
+    cancelDeleteCapture,
+    confirmDeleteCapture,
     archiveCapture,
     toggleItemShare,
     updateSavedField,
