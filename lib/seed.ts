@@ -60,6 +60,7 @@ export function seedCaptures(): CaptureSession[] {
   return [
     {
       id: "c_investor",
+      persistenceSource: "local",
       kind: "voice",
       title: "Nerves before the investor meeting",
       summary: "Worried about tomorrow's pitch and whether the numbers hold up.",
@@ -92,6 +93,7 @@ export function seedCaptures(): CaptureSession[] {
     },
     {
       id: "c_alone",
+      persistenceSource: "local",
       kind: "voice",
       title: "Feeling alone leading the team",
       summary: "The isolation of being the one who has to hold it all together.",

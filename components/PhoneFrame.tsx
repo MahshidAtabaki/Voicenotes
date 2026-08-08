@@ -57,6 +57,13 @@ export function PhoneFrame({
             </span>
           </div>
           {children}
+          <div
+            data-phone-overlay-host="1"
+            aria-live="polite"
+            style={css(
+              "position:absolute;inset:0;z-index:100;pointer-events:none;overflow:hidden;border-radius:inherit",
+            )}
+          />
         </div>
       </div>
     </div>

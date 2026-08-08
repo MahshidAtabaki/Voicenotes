@@ -1,10 +1,14 @@
+import { createPortal } from "react-dom";
 import { useVC } from "@/lib/store";
+import { getPhoneOverlayHost } from "@/lib/delete-confirmation";
 import type { ThoughtItem } from "@/lib/types";
 import { css } from "../css";
 import { fmtDur } from "./shared";
 
 export function Detail() {
   const vc = useVC();
+  const overlayHost =
+    typeof document === "undefined" ? null : getPhoneOverlayHost(document);
   const c = vc.captures.find((x) => x.id === vc.detailId) ?? vc.captures[0];
   if (!c) {
     return (
@@ -92,6 +96,66 @@ export function Detail() {
           <p style={css("font-size:15px;line-height:1.65;color:#1d1d1f;margin:0")}>{transcript}</p>
         </div>
       </div>
+      {vc.deleteConfirmationOpen && overlayHost
+        ? createPortal(<DeleteConfirmation />, overlayHost)
+        : null}
+    </div>
+  );
+}
+
+function DeleteConfirmation() {
+  const vc = useVC();
+  return (
+    <div
+      role="presentation"
+      onClick={vc.cancelDeleteCapture}
+      style={css(
+        "position:absolute;inset:0;z-index:1;display:flex;align-items:flex-end;background:rgba(0,0,0,.48);pointer-events:auto",
+      )}
+    >
+      <section
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-capture-title"
+        aria-describedby="delete-capture-description"
+        className="vc-sheet"
+        onClick={(event) => event.stopPropagation()}
+        style={css(
+          "width:100%;background:#fff;border-radius:26px 26px 0 0;padding:12px 22px 30px;color:#1d1d1f;box-shadow:0 -12px 40px rgba(0,0,0,.18)",
+        )}
+      >
+        <div style={css("width:40px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 18px")} />
+        <h2 id="delete-capture-title" style={css("font-size:20px;font-weight:600;letter-spacing:-.3px;margin:0 0 8px")}>
+          Delete this capture?
+        </h2>
+        <p id="delete-capture-description" style={css("font-size:15px;line-height:1.5;color:#6e6e73;margin:0 0 20px")}>
+          This permanently removes the capture, its organised thoughts, and its recording. This can’t be undone.
+        </p>
+        {vc.deleteError && (
+          <p role="alert" style={css("font-size:14px;line-height:1.4;color:#c9342c;background:#fff0ef;border-radius:12px;padding:10px 12px;margin:0 0 12px")}>
+            {vc.deleteError}
+          </p>
+        )}
+        <button
+          className="vc-press"
+          onClick={vc.confirmDeleteCapture}
+          disabled={vc.deleteInProgress}
+          style={{
+            ...css("width:100%;height:52px;border:none;border-radius:15px;background:#ff3b30;color:#fff;font-size:17px;font-weight:600;cursor:pointer;margin-bottom:10px"),
+            opacity: vc.deleteInProgress ? 0.65 : 1,
+          }}
+        >
+          {vc.deleteInProgress ? "Deleting…" : "Delete"}
+        </button>
+        <button
+          className="vc-press"
+          onClick={vc.cancelDeleteCapture}
+          disabled={vc.deleteInProgress}
+          style={css("width:100%;height:52px;border:none;border-radius:15px;background:#f0f0f2;color:#1d1d1f;font-size:17px;font-weight:600;cursor:pointer")}
+        >
+          Cancel
+        </button>
+      </section>
     </div>
   );
 }
