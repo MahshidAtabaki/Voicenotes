@@ -87,7 +87,10 @@ export async function apiUpdateCapture(
 
 export async function apiDeleteCapture(id: string): Promise<void> {
   const res = await fetch(`/api/captures/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("delete_failed");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: "delete_failed" })) as { error?: string };
+    throw new Error(body.error ?? "delete_failed");
+  }
 }
 
 export async function apiSetItemShared(id: string, shared: boolean): Promise<void> {

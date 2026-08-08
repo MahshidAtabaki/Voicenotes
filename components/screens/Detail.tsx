@@ -49,7 +49,7 @@ export function Detail() {
         </button>
         <button
           className="vc-press"
-          onClick={vc.deleteCapture}
+          onClick={vc.requestDeleteCapture}
           style={css("border:none;background:none;color:#ff3b30;font-size:15px;cursor:pointer;padding:6px 8px")}
         >
           Delete
@@ -92,6 +92,67 @@ export function Detail() {
           <p style={css("font-size:15px;line-height:1.65;color:#1d1d1f;margin:0")}>{transcript}</p>
         </div>
       </div>
+      {vc.deleteConfirmOpen && <DeleteCaptureSheet />}
+    </div>
+  );
+}
+
+function DeleteCaptureSheet() {
+  const vc = useVC();
+  return (
+    <div
+      role="presentation"
+      onClick={vc.cancelDeleteCapture}
+      style={css(
+        "position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.38);display:flex;align-items:flex-end",
+      )}
+    >
+      <section
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-capture-title"
+        aria-describedby="delete-capture-message"
+        onClick={(event) => event.stopPropagation()}
+        className="vc-sheet"
+        style={css(
+          "width:100%;background:#f5f5f7;border-radius:26px 26px 0 0;padding:10px 18px 30px;color:#1d1d1f;text-align:center",
+        )}
+      >
+        <div style={css("width:40px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 20px")} />
+        <h2 id="delete-capture-title" style={css("font-size:21px;font-weight:600;letter-spacing:-.3px;margin:0 0 9px")}>
+          Delete this capture?
+        </h2>
+        <p id="delete-capture-message" style={css("font-size:15px;line-height:1.45;color:#6e6e73;margin:0 auto 20px;max-width:330px")}>
+          This will permanently delete the recording and its organised thoughts. This cannot be undone.
+        </p>
+        {vc.deleteCaptureError && (
+          <div role="alert" style={css("background:#fff0ef;color:#b42318;border-radius:13px;padding:11px 12px;margin:0 0 12px;font-size:14px;line-height:1.4")}>
+            Couldn&apos;t delete this capture. Try again.
+          </div>
+        )}
+        <div style={css("display:flex;gap:10px")}>
+          <button
+            className="vc-press"
+            onClick={vc.cancelDeleteCapture}
+            disabled={vc.deletingCapture}
+            style={css("flex:1;height:52px;border:none;border-radius:15px;background:#fff;color:#1d1d1f;font-size:17px;font-weight:600;cursor:pointer")}
+          >
+            Cancel
+          </button>
+          <button
+            className="vc-press"
+            onClick={vc.confirmDeleteCapture}
+            disabled={vc.deletingCapture}
+            style={{
+              ...css("flex:1;height:52px;border:none;border-radius:15px;background:#ff3b30;color:#fff;font-size:17px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px"),
+              opacity: vc.deletingCapture ? 0.72 : 1,
+            }}
+          >
+            {vc.deletingCapture && <span aria-hidden="true" style={css("width:15px;height:15px;border:2px solid rgba(255,255,255,.45);border-top-color:#fff;border-radius:50%;animation:vcSpin .7s linear infinite")} />}
+            {vc.deleteCaptureError ? "Retry delete" : "Delete"}
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

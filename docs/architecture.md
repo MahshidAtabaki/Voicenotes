@@ -119,6 +119,15 @@ When Supabase is configured and the browser has a valid Supabase user:
 - playback uses a short-lived signed URL;
 - delete removes capture data and associated audio.
 
+Permanent deletion is performed by the authenticated server route. The route
+first verifies that the capture belongs to the current Supabase user, explicitly
+removes any audio object from the private `voice-captures` bucket, and only then
+deletes the owned `capture_sessions` row after requiring the database to return
+the deleted ID. Existing foreign keys cascade that deletion through
+`thought_items` and `thought_tags`. Text captures follow the same database path
+without a Storage operation. A failed or unconfirmed operation remains retryable
+and must not be reflected as a successful client-side deletion.
+
 ### No-login local mode
 
 When there is no valid Supabase browser session:

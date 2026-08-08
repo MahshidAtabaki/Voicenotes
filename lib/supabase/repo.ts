@@ -8,6 +8,10 @@ import type {
   ThoughtItem,
 } from "../types";
 import { createSupabaseAdmin, createSupabaseServer } from "./server";
+import {
+  permanentlyDeleteOwnedCapture,
+  type CaptureDeletionAdapter,
+} from "../capture-deletion";
 
 /* Server-side data access. Every query runs under the user's session, so RLS
    guarantees users only ever read or write their own rows. */
@@ -243,29 +247,39 @@ export async function updateItem(
   if (error) throw error;
 }
 
-/** Delete a capture and its stored audio (DB rows cascade). */
-export async function deleteCapture(id: string): Promise<void> {
+/** Delete an owned capture, its cascaded rows, and its stored audio. */
+export async function deleteCapture(id: string, userId: string): Promise<void> {
   const supabase = await createSupabaseServer();
-  const userId = await getUserId();
-  if (!userId) throw new Error("Not authenticated");
-
-  const { data: sr } = await supabase
-    .from("capture_sessions")
-    .select("audio_path")
-    .eq("id", id)
-    .maybeSingle();
-  const audioPath = (sr as { audio_path: string | null } | null)?.audio_path;
-
-  const { error } = await supabase.from("capture_sessions").delete().eq("id", id);
-  if (error) throw error;
-
-  if (audioPath) {
-    // Remove the stored object too. Ownership already enforced by the path prefix.
-    try {
+  const adapter: CaptureDeletionAdapter = {
+    async findOwnedCapture(captureId, ownerId) {
+      const { data, error } = await supabase
+        .from("capture_sessions")
+        .select("id,user_id,audio_path")
+        .eq("id", captureId)
+        .eq("user_id", ownerId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      const row = data as { id: string; user_id: string; audio_path: string | null };
+      return { id: row.id, userId: row.user_id, audioPath: row.audio_path };
+    },
+    async removeAudio(audioPath) {
       const admin = createSupabaseAdmin();
-      await admin.storage.from("voice-captures").remove([audioPath]);
-    } catch {
-      // Storage cleanup is best-effort; the DB rows are already gone.
-    }
-  }
+      const { error } = await admin.storage.from("voice-captures").remove([audioPath]);
+      if (error) throw error;
+    },
+    async deleteDatabaseCapture(captureId, ownerId) {
+      const { data, error } = await supabase
+        .from("capture_sessions")
+        .delete()
+        .eq("id", captureId)
+        .eq("user_id", ownerId)
+        .select("id")
+        .maybeSingle();
+      if (error) throw error;
+      return data?.id === captureId;
+    },
+  };
+
+  await permanentlyDeleteOwnedCapture(id, userId, adapter);
 }
