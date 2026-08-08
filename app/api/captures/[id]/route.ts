@@ -6,6 +6,7 @@ import {
   getUserId,
   updateCapture,
 } from "@/lib/supabase/repo";
+import { CaptureNotFoundError } from "@/lib/capture-deletion";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -68,12 +69,27 @@ export async function DELETE(_req: Request, { params }: Ctx) {
   if (!isSupabaseConfigured())
     return NextResponse.json({ error: "not_configured" }, { status: 501 });
   const { id } = await params;
+  let authenticatedUserId: string | null = null;
   try {
-    if (!(await getUserId()))
+    const userId = await getUserId();
+    authenticatedUserId = userId;
+    if (!userId)
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-    await deleteCapture(id);
+    await deleteCapture(id, userId);
     return NextResponse.json({ ok: true });
-  } catch {
+  } catch (error) {
+    if (error instanceof CaptureNotFoundError)
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    console.error("Capture deletion failed", {
+      captureId: id,
+      userId: authenticatedUserId,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      errorMessage: error instanceof Error ? error.message : "unknown_error",
+      errorCode:
+        typeof error === "object" && error && "code" in error
+          ? String(error.code)
+          : undefined,
+    });
     return NextResponse.json({ error: "delete_failed" }, { status: 500 });
   }
 }

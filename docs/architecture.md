@@ -59,6 +59,19 @@ streaming transcription during recording. Never simulate a live transcript.
 3. The server returns validated organised topics.
 4. The user reviews and saves using the same persistence path as voice.
 
+### Optional background (demo UI)
+
+The capture composer includes an optional, explicit background picker with local
+demo examples for calendar, personal notes, work notes, and support-session
+notes. These examples do not represent connected accounts and are never imported
+automatically. Selected background remains visually and structurally separate
+from recorded or typed source words, and the user can remove it at any time.
+
+The current implementation is an interaction demonstration: selected background
+is not sent to the organiser or persisted with a saved capture. A production
+integration requires an explicit source-connection and consent model, a separate
+validated context payload and persistence schema, and clear revocation behaviour.
+
 Text processing states and copy must never refer to a recording or voice.
 
 ## AI organisation
@@ -105,6 +118,18 @@ When Supabase is configured and the browser has a valid Supabase user:
 - Row Level Security restricts records to their owner;
 - playback uses a short-lived signed URL;
 - delete removes capture data and associated audio.
+
+Permanent deletion is performed by the authenticated server route. The route
+first verifies that the capture belongs to the current Supabase user, explicitly
+removes any audio object from the private `voice-captures` bucket, and only then
+deletes the owned `capture_sessions` row after requiring the database to return
+the deleted ID. Storage deletion uses the same server-side, cookie-bound user
+session and the bucket's owner-only delete policy; it does not require or expose
+a service-role key. An already-missing audio object is treated as deleted.
+Existing foreign keys cascade the database deletion through
+`thought_items` and `thought_tags`. Text captures follow the same database path
+without a Storage operation. A failed or unconfirmed operation remains retryable
+and must not be reflected as a successful client-side deletion.
 
 ### No-login local mode
 

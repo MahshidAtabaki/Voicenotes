@@ -3,6 +3,7 @@
 import { useVC } from "@/lib/store";
 import { css } from "./css";
 import { fmtDur } from "./screens/shared";
+import { GLOBAL_PLAYER_Z_INDEX } from "@/lib/delete-confirmation";
 
 export function MiniPlayer({ raised }: { raised: boolean }) {
   const vc = useVC();
@@ -16,9 +17,10 @@ export function MiniPlayer({ raised }: { raised: boolean }) {
       aria-label="Recording player"
       style={{
         ...css(
-          "position:absolute;left:12px;right:12px;z-index:80;background:rgba(250,250,252,.94);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(0,0,0,.08);border-radius:20px;padding:11px 12px 10px;box-shadow:0 10px 30px rgba(0,0,0,.16);transition:bottom .38s cubic-bezier(.2,.8,.2,1),transform .38s cubic-bezier(.2,.8,.2,1)",
+          "position:absolute;left:12px;right:12px;background:rgba(250,250,252,.94);backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(0,0,0,.08);border-radius:20px;padding:11px 12px 10px;box-shadow:0 10px 30px rgba(0,0,0,.16);transition:bottom .38s cubic-bezier(.2,.8,.2,1),transform .38s cubic-bezier(.2,.8,.2,1)",
         ),
         bottom: raised ? "82px" : "14px",
+        zIndex: GLOBAL_PLAYER_Z_INDEX,
       }}
     >
       <div style={css("display:flex;align-items:center;gap:10px")}>
